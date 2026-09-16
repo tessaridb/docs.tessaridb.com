@@ -4,7 +4,7 @@
 
 # docs.tessaridb.com
 
-**The documentation site for [TessariDB](https://github.com/TessariDB/TessariDB)
+**The documentation site for [TessariDB](https://github.com/TessariDB/tessaridb)
 — and the first thing built on it.**
 
 [![status](https://img.shields.io/badge/status-in%20development-9A93C4?style=flat-square)](#status)

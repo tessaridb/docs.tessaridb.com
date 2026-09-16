@@ -68,12 +68,12 @@ export function Footer() {
               </a>
             </li>
             <li>
-              <a href="https://github.com/TessariDB/TessariDB-protocol">
+              <a href="https://github.com/TessariDB/tessaridb-protocol">
                 Protocol specification
               </a>
             </li>
             <li>
-              <a href="https://github.com/TessariDB/TessariDB-sdk-rust">Rust client</a>
+              <a href="https://github.com/TessariDB/tessaridb-sdk-rust">Rust client</a>
             </li>
             <li>
               <Link href="/clients/protocol">Writing a client</Link>
