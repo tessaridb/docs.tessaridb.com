@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { Mark } from "@/components/icons";
+import { GitHub, Mark } from "@/components/icons";
 import { version } from "@/lib/site";
 
 /**
@@ -56,6 +56,17 @@ export function Footer() {
         <nav className="footer-links" aria-label="Project">
           <h2>Project</h2>
           <ul>
+            <li>
+              {/*
+                The organisation rather than one repository: it is the page that
+                stays right as repositories are opened, and it already lists the
+                ones that are public.
+              */}
+              <a className="footer-source" href="https://github.com/TessariDB">
+                <GitHub size={14} />
+                Source on GitHub
+              </a>
+            </li>
             <li>
               <a href="https://github.com/TessariDB/TessariDB-protocol">
                 Protocol specification

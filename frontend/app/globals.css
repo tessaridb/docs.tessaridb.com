@@ -924,6 +924,14 @@ a:hover {
 .footer-links a:hover {
   color: var(--brand);
 }
+/* The mark sits on the text baseline rather than above it, so the row reads as
+   one thing. `inline-flex` keeps the gap from collapsing the way a margin on an
+   svg does. */
+.footer-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
 .footer-legal {
   border-top: 1px solid var(--border);
   max-width: 90rem;
