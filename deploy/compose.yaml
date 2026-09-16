@@ -139,7 +139,31 @@ services:
     # and this site serves no files. So the reason to move is currency rather
     # than need — worth saying out loud, because "nothing here changes" is
     # exactly the thought that skips the verification below.
-    image: tessaridb/tessaridb:0.1.1-beta
+    #
+    # Moved to 0.2.1-beta on 2026-09-16, skipping 0.2.0-beta. Two releases in one
+    # step, so it was verified on a COPY of the real store rather than on a
+    # replay: a replay writes in the new format and therefore cannot test the one
+    # thing at risk, which is the new engine opening the OLD bytes. The node was
+    # stopped for the copy (never `cp -a` a running LSM store), the site was back
+    # up inside a minute, and the copy was opened under 0.2.1-beta beside the
+    # live 0.1.1-beta with the SAME script against both:
+    #
+    #   pages / MATCHES / PREFIX / FUZZY — live [2,5,5,5], copy [2,5,5,5]
+    #
+    # Every figure non-zero, which matters as much as their agreeing: the first
+    # cut of this check asked for the field `body`, which does not exist, and
+    # both sides answered 0 — a comparison that agrees because neither side can
+    # answer proves nothing. The reader account signed in against the copy, which
+    # is what proves the user catalog survived; `init` answering `ok` would have
+    # proved nothing (a catalog name is unique across the STORE and every
+    # definition carries `IF NOT EXISTS`).
+    #
+    # The namespace stays `v0_0_3_alpha` and no reindex was needed — the W88 trap
+    # is exactly what the PREFIX and FUZZY rows above are there to catch, and
+    # they answered. Rolling back is this line and the `init` one alone; the
+    # backup taken first is /var/backups/docs/20260916T135757Z.tessarilog, 3134
+    # records, sequences 1..=3134, checked.
+    image: tessaridb/tessaridb:0.2.1-beta
     environment:
       TESSARIDB_STORE: /var/lib/tessaridb/store
       # Every interface, because the API is in a different container. That is
@@ -208,7 +232,7 @@ services:
     # Kept equal to the `db` image above, deliberately: this runs as a client
     # against that node, and a client from a different release is a difference
     # nobody planned for on the one path that declares accounts.
-    image: tessaridb/tessaridb:0.1.1-beta
+    image: tessaridb/tessaridb:0.2.1-beta
     environment:
       TESSARIDB_PASSWORD: ${DOCS_OWNER_PASSWORD:?set it in deploy/.env}
     command:
