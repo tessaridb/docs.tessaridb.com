@@ -1393,7 +1393,7 @@ dependencies = [
 [[package]]
 name = "tessaridb-client"
 version = "0.1.0"
-source = "git+https://github.com/TessariDB/TessariDB-sdk-rust.git?rev=a969114f5a5ca1b6d493bbdcdcf5856cdfe5ef5c#a969114f5a5ca1b6d493bbdcdcf5856cdfe5ef5c"
+source = "git+https://github.com/tessaridb/TessariDB-sdk-rust.git?rev=a969114f5a5ca1b6d493bbdcdcf5856cdfe5ef5c#a969114f5a5ca1b6d493bbdcdcf5856cdfe5ef5c"
 dependencies = [
  "thiserror",
  "tokio",

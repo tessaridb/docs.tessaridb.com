@@ -58,22 +58,24 @@ export function Footer() {
           <ul>
             <li>
               {/*
-                The organisation rather than one repository: it is the page that
-                stays right as repositories are opened, and it already lists the
-                ones that are public.
+                The engine itself, not the organisation. This pointed at the
+                organisation while the engine was private, because a link to a
+                private repository is a 404 for everybody who follows it. The
+                engine is public as of 0.2.2-beta, so the link now goes to the
+                thing a reader came for.
               */}
-              <a className="footer-source" href="https://github.com/TessariDB">
+              <a className="footer-source" href="https://github.com/tessaridb/tessaridb">
                 <GitHub size={14} />
                 Source on GitHub
               </a>
             </li>
             <li>
-              <a href="https://github.com/TessariDB/tessaridb-protocol">
+              <a href="https://github.com/tessaridb/tessaridb-protocol">
                 Protocol specification
               </a>
             </li>
             <li>
-              <a href="https://github.com/TessariDB/tessaridb-sdk-rust">Rust client</a>
+              <a href="https://github.com/tessaridb/tessaridb-sdk-rust">Rust client</a>
             </li>
             <li>
               <Link href="/clients/protocol">Writing a client</Link>

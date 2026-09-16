@@ -8,7 +8,7 @@ edition = "2024"
 rust-version = "1.98"
 license = "Apache-2.0"
 authors = ["boogvar"]
-repository = "https://github.com/TessariDB/docs.tessaridb.com"
+repository = "https://github.com/tessaridb/docs.tessaridb.com"
 publish = false
 
 [workspace.dependencies]
@@ -20,7 +20,7 @@ docs-server = { path = "crates/docs-server", version = "0.0.3-alpha" }
 # the published client. A path or a git reference to the engine repository would
 # make this site a privileged consumer and stop it from being a demonstration of
 # what an ordinary one can do (LR-DOCS-003).
-tessaridb-client = { git = "https://github.com/TessariDB/TessariDB-sdk-rust.git", rev = "a969114f5a5ca1b6d493bbdcdcf5856cdfe5ef5c" }
+tessaridb-client = { git = "https://github.com/tessaridb/TessariDB-sdk-rust.git", rev = "a969114f5a5ca1b6d493bbdcdcf5856cdfe5ef5c" }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "fs", "signal"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query"] }
