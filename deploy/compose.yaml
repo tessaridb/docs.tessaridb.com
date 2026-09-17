@@ -163,7 +163,26 @@ services:
     # they answered. Rolling back is this line and the `init` one alone; the
     # backup taken first is /var/backups/docs/20260916T135757Z.tessarilog, 3134
     # records, sequences 1..=3134, checked.
-    image: tessaridb/tessaridb:0.2.2-beta
+    #
+    # # 0.2.2-beta -> 0.3.0-beta, 2026-09-17
+    #
+    # Checked differently from the move above, and more cheaply. The store was
+    # stopped for one second, copied to /var/lib/docs-probe, and the node
+    # restarted; the copy was then opened by 0.3.0-beta and asked for a whole
+    # backup, which reads EVERY record in EVERY namespace. It answered 3398
+    # records across 2 logs — store 1..=3134, namespace 4 database 3 1..=264 —
+    # which is what the running 0.2.2-beta node had answered minutes earlier.
+    #
+    # Then the two files were compared rather than their summaries: 6022288
+    # bytes each, and `cmp -l` reports **exactly two differing bytes**, at
+    # offsets 0x13 and 0x17. Those are the writer's own version triple in the
+    # header — 0.2.2 against 0.3.0 — so all 3398 records are byte-identical.
+    # A record count that agrees can agree wrongly; two bytes cannot.
+    #
+    # The backup taken first is /var/backups/docs/20260917T120108Z.tessarilog,
+    # 3398 records, checked by the engine that wrote it. Rolling back is this
+    # line and the `init` one.
+    image: tessaridb/tessaridb:0.3.0-beta
     environment:
       TESSARIDB_STORE: /var/lib/tessaridb/store
       # Every interface, because the API is in a different container. That is
@@ -232,7 +251,7 @@ services:
     # Kept equal to the `db` image above, deliberately: this runs as a client
     # against that node, and a client from a different release is a difference
     # nobody planned for on the one path that declares accounts.
-    image: tessaridb/tessaridb:0.2.2-beta
+    image: tessaridb/tessaridb:0.3.0-beta
     environment:
       TESSARIDB_PASSWORD: ${DOCS_OWNER_PASSWORD:?set it in deploy/.env}
     command:
