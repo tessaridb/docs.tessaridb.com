@@ -182,7 +182,7 @@ services:
     # The backup taken first is /var/backups/docs/20260917T120108Z.tessarilog,
     # 3398 records, checked by the engine that wrote it. Rolling back is this
     # line and the `init` one.
-    image: tessaridb/tessaridb:0.3.0-beta
+    image: tessaridb/tessaridb:0.4.0-beta
     environment:
       TESSARIDB_STORE: /var/lib/tessaridb/store
       # Every interface, because the API is in a different container. That is
@@ -251,7 +251,7 @@ services:
     # Kept equal to the `db` image above, deliberately: this runs as a client
     # against that node, and a client from a different release is a difference
     # nobody planned for on the one path that declares accounts.
-    image: tessaridb/tessaridb:0.3.0-beta
+    image: tessaridb/tessaridb:0.4.0-beta
     environment:
       TESSARIDB_PASSWORD: ${DOCS_OWNER_PASSWORD:?set it in deploy/.env}
     command:
