@@ -192,7 +192,12 @@ services:
     # /var/backups/docs/20260927T232720Z.tessarilog (7123232 bytes, verified); a
     # copy of the store opened by 0.10.0-beta backed up to the same 7123232 bytes
     # with **one** differing byte, offset 20, the writer's minor version 9 -> 10.
-    image: tessaridb/tessaridb:0.10.0-beta
+    #
+    # 0.10.0-beta -> 0.11.0-beta (2026-09-29): backup
+    # /var/backups/docs/20260929T042948Z.tessarilog (7389545 bytes, verified); a
+    # copy of the store opened by 0.10.0-beta and by 0.11.0-beta backed up to the
+    # same 7389545 bytes with **one** differing byte, offset 20, 10 -> 11.
+    image: tessaridb/tessaridb:0.11.0-beta
     environment:
       TESSARIDB_STORE: /var/lib/tessaridb/store
       # Every interface, because the API is in a different container. That is
@@ -261,7 +266,7 @@ services:
     # Kept equal to the `db` image above, deliberately: this runs as a client
     # against that node, and a client from a different release is a difference
     # nobody planned for on the one path that declares accounts.
-    image: tessaridb/tessaridb:0.10.0-beta
+    image: tessaridb/tessaridb:0.11.0-beta
     environment:
       TESSARIDB_PASSWORD: ${DOCS_OWNER_PASSWORD:?set it in deploy/.env}
     command:

@@ -21,18 +21,31 @@ kind	set
 kind	string
 kind	table
 kind	uuid
+function	array::append
+function	array::concat
 function	array::distinct
 function	array::first
 function	array::flatten
+function	array::index_of
 function	array::join
 function	array::last
 function	array::len
+function	array::max
+function	array::min
 function	array::reverse
 function	array::slice
 function	array::sort
+function	array::sum
+function	crypto::md5
+function	crypto::sha1
 function	crypto::sha256
 function	crypto::sha512
+function	encoding::base64
+function	encoding::base64_decode
+function	encoding::hex
+function	encoding::hex_decode
 function	geo::area
+function	geo::cell
 function	geo::contains
 function	geo::covered_by
 function	geo::covers
@@ -44,24 +57,41 @@ function	geo::touches
 function	geo::within
 function	math::abs
 function	math::ceil
+function	math::exp
 function	math::floor
+function	math::ln
+function	math::max
+function	math::min
 function	math::pow
 function	math::round
+function	math::sign
 function	math::sqrt
+function	math::trunc
+function	object::entries
+function	object::has
 function	object::keys
 function	object::len
+function	object::merge
 function	object::values
 function	rand::uuid
 function	search::highlight
+function	search::ranks
 function	search::score
 function	string::concat
+function	string::contains
+function	string::ends_with
+function	string::index_of
 function	string::len
 function	string::lines
 function	string::lower
 function	string::replace
+function	string::reverse
 function	string::slice
 function	string::split
+function	string::starts_with
 function	string::trim
+function	string::trim_end
+function	string::trim_start
 function	string::upper
 function	time::bucket
 function	time::day
@@ -83,66 +113,92 @@ function	type::uuid
 function	vector::cosine
 function	vector::dot
 function	vector::euclidean
+form	ADD RECIPIENT
+form	ALTER NAMESPACE
 form	ALTER TABLE
 form	ALTER TABLE ALTER FIELD
 form	ALTER USER
 form	BACKUP
 form	BEGIN
 form	CANCEL
+form	CHECK TABLE
+form	CLAIM
+form	CLAIM <record>
 form	COMMIT
 form	CREATE
 form	DEFINE ANALYZER
 form	DEFINE BUCKET
 form	DEFINE COLLECTION
-form	DEFINE CONSUMER
 form	DEFINE DATABASE
 form	DEFINE EDGE
+form	DEFINE FAILOVER
 form	DEFINE FIELD
 form	DEFINE GEO
 form	DEFINE GRAPH
 form	DEFINE INDEX
+form	DEFINE KAFKA CONSUMER
 form	DEFINE NAMESPACE
 form	DEFINE NODE
+form	DEFINE QUEUE
 form	DEFINE REPLICA
+form	DEFINE SERIES
 form	DEFINE SPACE
 form	DEFINE TABLE
+form	DEFINE TOPIC
 form	DEFINE USER
+form	DEFINE VAULT
 form	DEFINE VECTOR
+form	DEFINE VIEW
 form	DEL
 form	DELETE
 form	DELETE EDGE
 form	DELETE FROM
+form	DELETE FROM a span
 form	DROP ANALYZER
-form	DROP CONSUMER
 form	DROP DATABASE
 form	DROP EDGE
 form	DROP FIELD
 form	DROP GEO
 form	DROP GRAPH
 form	DROP INDEX
+form	DROP KAFKA CONSUMER
 form	DROP NAMESPACE
+form	DROP QUEUE
 form	DROP REPLICA
+form	DROP SERIES
 form	DROP TABLE
 form	DROP USER
+form	DROP VAULT
 form	DROP VECTOR
+form	DROP VIEW
+form	EXPIRE
 form	EXPLAIN
 form	GET
 form	GRANT
 form	GRANT ON REACH
+form	INCR
 form	INFO FOR
 form	INSERT
 form	KEYS
 form	LET
+form	PERSIST
 form	PUT
 form	READ
+form	READ FROM
 form	REBUILD INDEX
 form	RELATE
+form	RELEASE
+form	RELEASE ALL
+form	REMOVE RECIPIENT
 form	RETURN
+form	REVEAL
 form	REVOKE
 form	REVOKE ON REACH
+form	SEAL VAULT
 form	SELECT
 form	SET
 form	THROW
+form	UNSEAL VAULT
 form	UPDATE
 form	UPSERT
 form	USE
