@@ -113,7 +113,9 @@ function	type::uuid
 function	vector::cosine
 function	vector::dot
 function	vector::euclidean
+form	ACK
 form	ADD RECIPIENT
+form	ALTER GROUP
 form	ALTER NAMESPACE
 form	ALTER TABLE
 form	ALTER TABLE ALTER FIELD
@@ -135,6 +137,7 @@ form	DEFINE FAILOVER
 form	DEFINE FIELD
 form	DEFINE GEO
 form	DEFINE GRAPH
+form	DEFINE GROUP
 form	DEFINE INDEX
 form	DEFINE KAFKA CONSUMER
 form	DEFINE NAMESPACE
@@ -160,6 +163,7 @@ form	DROP EDGE
 form	DROP FIELD
 form	DROP GEO
 form	DROP GRAPH
+form	DROP GROUP
 form	DROP INDEX
 form	DROP KAFKA CONSUMER
 form	DROP NAMESPACE
@@ -181,6 +185,7 @@ form	INFO FOR
 form	INSERT
 form	KEYS
 form	LET
+form	NACK
 form	PERSIST
 form	PUT
 form	READ
