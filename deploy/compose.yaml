@@ -222,6 +222,11 @@ services:
     # /var/backups/docs/20260930T093112Z.tessarilog (9462105 bytes, verified); a
     # copy of the store opened by 0.15.0-beta and by 0.16.0-beta backed up to the
     # same 9462105 bytes with **one** differing byte, offset 20, 15 -> 16.
+    # 0.16.0-beta -> 0.17.1-beta (2026-10-01): backup
+    # /var/backups/docs/20260930T184339Z.tessarilog (9696227 bytes, verified); a
+    # copy of the store opened by 0.16.0-beta and by 0.17.1-beta backed up to the
+    # same 9696227 bytes with **two** differing bytes, offset 20, 16 -> 17, and
+    # offset 24, 0 -> 1. 0.17.0-beta was never deployed here.
     image: tessaridb/tessaridb:0.17.1-beta
     environment:
       TESSARIDB_STORE: /var/lib/tessaridb/store
