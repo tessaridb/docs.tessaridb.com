@@ -249,7 +249,14 @@ services:
     # restored by 0.20.0-beta; served on this network, the copy answered page,
     # section, fragment and account byte-equal to the live node through one
     # 0.20.0-beta client.
-    image: tessaridb/tessaridb:0.20.0-beta
+    # 0.20.0-beta -> 0.20.1-beta (2026-10-02): snapshot
+    # /var/backups/docs/20261001T190512Z.tessarisnap (4265861 bytes, 1923
+    # records at version 6510) taken by the live 0.20.0-beta node, verified and
+    # restored by 0.20.1-beta; page, section, fragment and account byte-equal to
+    # the live node; the new API then applied its search schema as the editor,
+    # ingested 69 pages / 670 fragments into the copy and answered search with
+    # snippets and type-ahead.
+    image: tessaridb/tessaridb:0.20.1-beta
     environment:
       TESSARIDB_STORE: /var/lib/tessaridb/store
       # Every interface, because the API is in a different container. That is
@@ -318,7 +325,7 @@ services:
     # Kept equal to the `db` image above, deliberately: this runs as a client
     # against that node, and a client from a different release is a difference
     # nobody planned for on the one path that declares accounts.
-    image: tessaridb/tessaridb:0.20.0-beta
+    image: tessaridb/tessaridb:0.20.1-beta
     environment:
       TESSARIDB_PASSWORD: ${DOCS_OWNER_PASSWORD:?set it in deploy/.env}
     command:
