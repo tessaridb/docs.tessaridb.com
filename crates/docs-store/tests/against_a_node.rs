@@ -226,6 +226,60 @@ async fn the_page_a_query_is_about_outranks_a_page_that_merely_mentions_it() {
 }
 
 #[tokio::test]
+async fn a_hit_says_where_in_its_passage_the_match_is() {
+    let Some((mut store, _alone)) = store("t_window").await else {
+        eprintln!("skipped: DOCS_TEST_NODE is not set");
+        return;
+    };
+    store.ingest(&corpus()).await.expect("ingest");
+
+    // The window is the store's (`search::snippet()`), as byte offsets into the
+    // passage the hit carries. Asserted against the passage itself, because an
+    // offset into some other string — the title-prefixed `text` the old index
+    // read — would still be two plausible numbers.
+    let hits = store.search("collection", 10).await.expect("a search");
+    let first = hits
+        .first()
+        .expect("a hit for a word that is in the corpus");
+    let window = first.snippet.expect("a ranked hit carries its window");
+    let start = usize::try_from(window.start).expect("an offset");
+    let end = usize::try_from(window.end).expect("an offset");
+    assert!(
+        start < end && end <= first.text.len(),
+        "{window:?} over {:?}",
+        first.text
+    );
+    assert!(
+        first.text[start..end].to_lowercase().contains("collection"),
+        "the window {:?} does not hold the word searched for",
+        &first.text[start..end]
+    );
+}
+
+#[tokio::test]
+async fn a_word_being_typed_is_completed_from_the_words_the_site_holds() {
+    let Some((mut store, _alone)) = store("t_suggest").await else {
+        eprintln!("skipped: DOCS_TEST_NODE is not set");
+        return;
+    };
+    store.ingest(&corpus()).await.expect("ingest");
+
+    // Whole words as written, not stems: a box that offers `analyz` has
+    // offered something nobody would type.
+    let offered = store.suggest("analy", 5).await.expect("suggestions");
+    assert!(
+        offered
+            .iter()
+            .any(|word| word == "analyzer" || word == "analyzers"),
+        "offered {offered:?}"
+    );
+    assert!(
+        offered.iter().all(|word| word.starts_with("analy")),
+        "offered {offered:?}"
+    );
+}
+
+#[tokio::test]
 async fn a_search_term_cannot_become_syntax() {
     let Some((mut store, _alone)) = store("t_injection").await else {
         eprintln!("skipped: DOCS_TEST_NODE is not set");
@@ -274,7 +328,7 @@ async fn the_search_runs_off_the_index_and_not_off_a_scan() {
     // it took, which is the only thing that would.
     let answers = store
         .run_with(
-            "SELECT page, heading, anchor, text, search::score(text, $q) AS relevance FROM fragment WHERE text MATCHES $q ORDER BY search::score(text, $q) DESC LIMIT 10;",
+            "SELECT page, heading, anchor, body, search::score() AS relevance, search::snippet() AS snippet FROM SEARCH site MATCHES $q LIMIT 10;",
             vec![(
                 "q".to_owned(),
                 tessaridb_client::Value::String("analyzer".to_owned()),

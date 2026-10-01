@@ -47,6 +47,9 @@ export type Page = {
   unreleased: boolean;
 };
 
+/** A span of a hit's `text`, as UTF-8 byte offsets — the store counts bytes. */
+export type Window = { start: number; end: number };
+
 /** One search result: a passage, with the page it sits in. */
 export type Hit = {
   page: string;
@@ -54,6 +57,8 @@ export type Hit = {
   anchor: string;
   text: string;
   relevance: number;
+  /** The store's window of the passage holding the most query words, if ranked. */
+  snippet: Window | null;
 };
 
 /** The API answered something other than what was asked for. */
@@ -75,7 +80,11 @@ async function get<T>(path: string, revalidate: number | false): Promise<T> {
     headers: { accept: "application/json" },
   });
   if (!response.ok) {
-    throw new ApiError(response.status, path, (await response.text()).slice(0, 200));
+    throw new ApiError(
+      response.status,
+      path,
+      (await response.text()).slice(0, 200),
+    );
   }
   return (await response.json()) as T;
 }
@@ -100,7 +109,10 @@ export async function page(slug: string): Promise<Page | null> {
   try {
     return await get<Page>(`/api/page/${encodePath(slug)}`, REVALIDATE);
   } catch (fault) {
-    if (fault instanceof ApiError && (fault.status === 404 || fault.status === 400)) {
+    if (
+      fault instanceof ApiError &&
+      (fault.status === 404 || fault.status === 400)
+    ) {
       return null;
     }
     throw fault;
@@ -111,6 +123,12 @@ export async function page(slug: string): Promise<Page | null> {
 export function search(query: string, limit = 20): Promise<Hit[]> {
   const asked = new URLSearchParams({ q: query, limit: String(limit) });
   return get<Hit[]>(`/api/search?${asked}`, false);
+}
+
+/** Words the site holds that begin with what is being typed. Never cached. */
+export function suggest(typed: string): Promise<string[]> {
+  const asked = new URLSearchParams({ p: typed });
+  return get<string[]>(`/api/suggest?${asked}`, false);
 }
 
 /**

@@ -47,6 +47,21 @@ pub struct Hit {
     pub text: String,
     /// What the store scored it. Carried through rather than recomputed.
     pub relevance: f64,
+    /// Where in `text` the passage that matched sits, when the store said.
+    ///
+    /// Byte offsets into `text`, from `search::snippet()` — the store's window
+    /// of the passage holding the most query words. Absent on the unranked
+    /// fallback passes, which read no search and so have no window to give.
+    pub snippet: Option<Window>,
+}
+
+/// A span of a hit's `text`, in bytes.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+pub struct Window {
+    /// Where it starts.
+    pub start: u64,
+    /// Where it ends, exclusive.
+    pub end: u64,
 }
 
 impl Store {
@@ -292,6 +307,36 @@ impl Store {
         Ok(hits)
     }
 
+    /// The site's words that begin with what the reader is typing, the ones
+    /// most pages hold first.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Fault::Client`] when the node refuses.
+    pub async fn suggest(&mut self, typed: &str, limit: u32) -> Result<Vec<String>, Fault> {
+        let typed = typed.trim();
+        // The engine refuses a prefix under three characters (`PrefixTooShort`);
+        // a box that has had two keystrokes has nothing to offer yet.
+        if !long_enough(typed) {
+            return Ok(Vec::new());
+        }
+        let limit = limit.clamp(1, 20);
+        let script = format!("SELECT term FROM SEARCH words COMPLETE $p LIMIT {limit};");
+        let answers = self
+            .run_with(
+                &script,
+                vec![(
+                    "p".to_owned(),
+                    tessaridb_client::Value::String(typed.to_lowercase()),
+                )],
+            )
+            .await?;
+        Ok(records(answers.first())?
+            .iter()
+            .filter_map(|(_, value)| non_empty(text_of(value, "term")))
+            .collect())
+    }
+
     /// The words the store indexed, ranked against the collection.
     ///
     /// The ordering is the store's — `search::score` over the one indexed field
@@ -307,11 +352,14 @@ impl Store {
         // `text`, which opens with the page title and the heading so that one
         // index can rank both — and a snippet drawn from it would begin by
         // repeating the two lines the result already shows above it.
+        //
+        // It reads the `site` search, which ranks title, heading and passage as
+        // three weighted fields of one document and answers best first — an
+        // `ORDER BY` over it is refused, because the search is its own order.
         let script = format!(
-            "SELECT page, heading, anchor, body, search::score(text, $q) AS relevance
-             FROM fragment
-             WHERE text MATCHES $q
-             ORDER BY search::score(text, $q) DESC
+            "SELECT page, heading, anchor, body, search::score() AS relevance,
+                    search::snippet() AS snippet
+             FROM SEARCH site MATCHES $q
              LIMIT {limit};"
         );
         let answers = self
@@ -413,10 +461,12 @@ impl Store {
         if !query.split_whitespace().all(long_enough) {
             return Ok(Vec::new());
         }
+        // Read from the `site` search, so the guesses come back in the order its
+        // weighted fields rank them — a title close to the word ahead of a
+        // passage that happens to hold it — rather than in storage order.
         let script = format!(
             "SELECT page, heading, anchor, body, text
-             FROM fragment
-             WHERE text MATCHES FUZZY $q
+             FROM SEARCH site MATCHES FUZZY $q
              LIMIT {limit};"
         );
         let answers = self
@@ -654,7 +704,36 @@ fn hit_of(value: &tessaridb_client::Value) -> Hit {
         // above it.
         text: text_of(value, "body"),
         relevance: relevance_of(value),
+        snippet: window_of(value),
     }
+}
+
+/// The `{ start, end }` a `search::snippet()` answered, when it answered one.
+///
+/// Read only from the `body` field: that is the one passage a hit shows, and an
+/// offset into any other field would be two plausible numbers about the wrong
+/// string.
+fn window_of(value: &tessaridb_client::Value) -> Option<Window> {
+    let tessaridb_client::Value::Object(fields) = value else {
+        return None;
+    };
+    let Some(tessaridb_client::Value::Object(window)) = fields.get("snippet") else {
+        return None;
+    };
+    if !matches!(window.get("field"), Some(tessaridb_client::Value::String(field)) if field == "body")
+    {
+        return None;
+    }
+    let offset = |name: &str| match window.get(name) {
+        Some(tessaridb_client::Value::Number(tessaridb_client::Number::Integer(found))) => {
+            u64::try_from(*found).ok()
+        }
+        _ => None,
+    };
+    Some(Window {
+        start: offset("start")?,
+        end: offset("end")?,
+    })
 }
 
 fn non_empty(text: String) -> Option<String> {
@@ -696,6 +775,7 @@ mod tests {
                     anchor: String::new(),
                     text: String::new(),
                     relevance: 0.0,
+                    snippet: None,
                 },
                 text: (*text).to_owned(),
             })

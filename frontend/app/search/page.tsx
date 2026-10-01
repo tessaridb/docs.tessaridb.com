@@ -4,10 +4,13 @@ import { connection } from "next/server";
 
 import { SearchAgain } from "@/components/SearchAgain";
 import { type Hit, search } from "@/lib/api";
+import { excerpt } from "@/lib/excerpt";
 
 type Asked = { searchParams: Promise<{ q?: string }> };
 
-export async function generateMetadata({ searchParams }: Asked): Promise<Metadata> {
+export async function generateMetadata({
+  searchParams,
+}: Asked): Promise<Metadata> {
   const { q } = await searchParams;
   /*
    * `noindex, follow`. robots.txt already disallows this path, but the two rules
@@ -19,7 +22,10 @@ export async function generateMetadata({ searchParams }: Asked): Promise<Metadat
    * Without both, every distinct `?q=` is a URL carrying the same words as the
    * pages it is searching, competing with them.
    */
-  return { title: q ? `Search: ${q}` : "Search", robots: { index: false, follow: true } };
+  return {
+    title: q ? `Search: ${q}` : "Search",
+    robots: { index: false, follow: true },
+  };
 }
 
 /**
@@ -78,16 +84,22 @@ export default async function SearchPage({ searchParams }: Asked) {
       ) : (
         <>
           <p className="searchpage-count">
-            {hits.length === 60 ? "The first 60 passages" : `${hits.length} passages`} for{" "}
-            <strong>{asked}</strong>
+            {hits.length === 60
+              ? "The first 60 passages"
+              : `${hits.length} passages`}{" "}
+            for <strong>{asked}</strong>
           </p>
           <ol className="searchpage-hits">
             {hits.map((hit) => (
               <li key={`${hit.page}#${hit.anchor}`}>
-                <Link href={hit.anchor ? `/${hit.page}#${hit.anchor}` : `/${hit.page}`}>
+                <Link
+                  href={
+                    hit.anchor ? `/${hit.page}#${hit.anchor}` : `/${hit.page}`
+                  }
+                >
                   <span className="searchpage-where">{hit.page}</span>
                   <span className="searchpage-heading">{hit.heading}</span>
-                  <span className="searchpage-text">{hit.text}</span>
+                  <span className="searchpage-text">{excerpt(hit)}</span>
                 </Link>
               </li>
             ))}

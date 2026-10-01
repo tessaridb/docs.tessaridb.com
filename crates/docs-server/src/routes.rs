@@ -35,6 +35,7 @@ pub fn router(site: Site) -> Router {
         .route("/api/session", post(session::issue).delete(session::revoke))
         .route("/api/nav", get(nav))
         .route("/api/search", get(search))
+        .route("/api/suggest", get(suggest))
         .route(
             "/api/page/{*slug}",
             get(page).put(put_page).delete(delete_page),
@@ -150,6 +151,25 @@ async fn search(State(site): State<Site>, Query(asked): Query<Asked>) -> Respons
     match site.reader().await {
         Ok(mut store) => match store.search(&asked.q, asked.limit).await {
             Ok(hits) => json(StatusCode::OK, &hits),
+            Err(fault) => refused(&fault),
+        },
+        Err(fault) => refused(&fault),
+    }
+}
+
+/// What a type-ahead asks for: the word being typed.
+#[derive(Debug, Deserialize)]
+pub struct Typed {
+    /// The characters so far.
+    #[serde(default)]
+    p: String,
+}
+
+/// Words the site holds that begin with what is being typed.
+async fn suggest(State(site): State<Site>, Query(typed): Query<Typed>) -> Response {
+    match site.reader().await {
+        Ok(mut store) => match store.suggest(&typed.p, 6).await {
+            Ok(words) => json(StatusCode::OK, &words),
             Err(fault) => refused(&fault),
         },
         Err(fault) => refused(&fault),

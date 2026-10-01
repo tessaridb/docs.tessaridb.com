@@ -34,10 +34,12 @@
   --measure: 46rem;
   --radius: 8px;
 
-  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto,
+  --sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, Roboto,
     "Helvetica Neue", Arial, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
+  --mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
 }
 
 :root[data-theme="dark"] {
@@ -606,6 +608,33 @@ a:hover {
   border-radius: 4px;
   padding: 0 0.3rem;
   line-height: 1.4;
+}
+
+/* Completions for the word being typed, above the results. */
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.35rem 0.45rem 0.55rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.25rem;
+}
+.suggestion {
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+  cursor: pointer;
+}
+.suggestion:hover,
+.suggestion:focus-visible {
+  color: var(--brand);
+  border-color: var(--brand);
+  outline: none;
 }
 
 .results {

@@ -180,7 +180,7 @@ impl Store {
             // The id is the page slug and the position, so it is stable across a
             // rebuild and unique without a counter.
             let script = format!(
-                "CREATE fragment:'{slug}#{order}' = {{ page: $page, anchor: $anchor, heading: $heading, depth: $depth, order: $order, text: $text, body: $body }};",
+                "CREATE fragment:'{slug}#{order}' = {{ page: $page, title: $title, anchor: $anchor, heading: $heading, depth: $depth, order: $order, text: $text, body: $body }};",
                 slug = page.slug,
                 order = fragment.order
             );
@@ -188,6 +188,9 @@ impl Store {
                 &script,
                 vec![
                     ("page".to_owned(), text(&page.slug)),
+                    // The page's title on every fragment, so the `site` search
+                    // can weigh a title hit apart from a heading or a passage.
+                    ("title".to_owned(), text(&page.title)),
                     ("anchor".to_owned(), text(&fragment.anchor)),
                     ("heading".to_owned(), text(&fragment.heading)),
                     ("depth".to_owned(), integer(i64::from(fragment.depth))),

@@ -6,13 +6,17 @@
 //!
 //! # The one decision worth reading
 //!
-//! `fragment.text` is the only analyzed field and carries the only search index.
-//! That is not an economy, it is a correctness requirement: `search::score` is
-//! refused over a field with no search index, and two scores drawn from two
-//! indexes measure against two different collections, so merging them into one
-//! ordering produces a ranking whose numbers do not mean what they appear to.
-//! `docs-content` composes the page title and the heading into `text` for
-//! exactly this reason, so one index ranks title hits and body hits together.
+//! The ranking comes from ONE place, the `site` search, and nothing merges two
+//! scores: two scores drawn from two indexes measure against two different
+//! collections, so one ordering made of both has numbers that do not mean what
+//! they appear to. `site` ranks the page title, the heading and the passage as
+//! three fields of one document with one set of statistics (BM25F), which is
+//! what used to need them composed into one `text` field — and weighs them
+//! apart, which that composition could not.
+//!
+//! `fragment.text` keeps its field index for the unranked fallbacks (a word
+//! being typed, a word misspelled), which ask *which* fragments match and never
+//! *how well*. The `words` search exists for type-ahead and ranks nothing.
 //!
 //! # Why the analyzer is named after a language and cannot be edited in place
 //!
@@ -107,6 +111,20 @@ DEFINE COLLECTION IF NOT EXISTS token;
 
 DEFINE FIELD IF NOT EXISTS text ON fragment TYPE string ANALYZER english;
 DEFINE INDEX IF NOT EXISTS by_text ON fragment FIELDS text SEARCH;
+
+-- The ranked search reads `site`: title, heading and passage as three fields
+-- of one document, weighted against each other (BM25F), so a page ABOUT a word
+-- outranks a page that mentions it. Weighed on a judgment set of 35 real
+-- queries: the title at 10 and the heading at 3 put the right page first for
+-- 29 of them where the single `text` field did for 21. `body` is the one field
+-- a snippet window is taken from, because it is the one shown under a result.
+DEFINE STOPWORDS IF NOT EXISTS common ['a', 'an', 'the', 'of', 'to', 'in', 'on', 'and', 'or', 'is', 'it', 'how', 'do', 'i', 'what'];
+DEFINE SEARCH IF NOT EXISTS site ON fragment FIELDS title WEIGHT 10, heading WEIGHT 3, body SNIPPET ANALYZER english STOPWORDS common;
+
+-- Type-ahead reads `words`, which is NOT stemmed: it offers words a reader
+-- would type, and a stemming analyzer would offer `analyz`.
+DEFINE ANALYZER IF NOT EXISTS plain FILTERS lowercase, ascii;
+DEFINE SEARCH IF NOT EXISTS words ON fragment FIELDS title, heading, body ANALYZER plain;
 "
     )
 }
@@ -184,35 +202,59 @@ mod tests {
     }
 
     #[test]
-    fn the_field_names_an_analyzer_this_script_declares_and_it_stems() {
+    fn what_ranks_names_an_analyzer_this_script_declares_and_it_stems() {
         // The failure this asserts against shipped: the chain was
         // `lowercase, ascii`, so `backups` found nothing while `backup` found
         // twenty pages — no error, no empty index, just a smaller answer than
         // the one asked for. And because an analyzer's name is unique across the
         // store, a field pointing at a name declared under some *other*
         // namespace's chain would look identical to this one from here.
+        //
+        // Two analyzers are declared since type-ahead arrived, and that is the
+        // point the guard now has to hold precisely: the one that RANKS — named
+        // by the analyzed field and by the `site` search — stems, and the
+        // unstemmed one is used by the type-ahead search alone, which ranks
+        // nothing and must offer words a reader would type.
         let script = statements("v1");
-        let declared: Vec<&str> = script
-            .lines()
-            .filter(|line| line.starts_with("DEFINE ANALYZER"))
-            .collect();
-        assert_eq!(declared.len(), 1, "{declared:?}");
-        let name = declared[0]
-            .split_whitespace()
-            .nth(5)
-            .expect("DEFINE ANALYZER IF NOT EXISTS <name> FILTERS …");
+        let ranking = "english";
         assert!(
-            script.contains(&format!("ON fragment TYPE string ANALYZER {name};")),
-            "the analyzed field names something other than {name}"
+            script.contains(&format!("ON fragment TYPE string ANALYZER {ranking};")),
+            "the analyzed field names something other than {ranking}"
         );
-        assert!(declared[0].contains("stemmer"), "{}", declared[0]);
+        let site = script
+            .lines()
+            .find(|line| line.starts_with("DEFINE SEARCH IF NOT EXISTS site "))
+            .expect("the site search");
+        assert!(site.contains(&format!("ANALYZER {ranking} ")), "{site}");
+        let declared = script
+            .lines()
+            .find(|line| line.starts_with(&format!("DEFINE ANALYZER IF NOT EXISTS {ranking} ")))
+            .expect("the ranking analyzer is declared here");
+        assert!(declared.contains("stemmer"), "{declared}");
         // `lowercase` before `stemmer`, or Porter2 returns the word untouched
         // rather than stemming it — a chain that reads right and does nothing.
-        let chain = declared[0]
-            .split_once("FILTERS ")
-            .expect("a filter chain")
-            .1;
+        let chain = declared.split_once("FILTERS ").expect("a filter chain").1;
         assert!(chain.find("lowercase") < chain.find("stemmer"), "{chain}");
+        // Every other analyzer is named by the type-ahead search and by nothing
+        // that ranks.
+        for other in script.lines().filter(|line| {
+            line.starts_with("DEFINE ANALYZER") && !line.contains(&format!(" {ranking} "))
+        }) {
+            let name = other.split_whitespace().nth(5).expect("a name");
+            let users: Vec<&str> = script
+                .lines()
+                .filter(|line| {
+                    line.contains(&format!("ANALYZER {name}"))
+                        && !line.starts_with("DEFINE ANALYZER")
+                })
+                .collect();
+            assert!(
+                users
+                    .iter()
+                    .all(|line| line.starts_with("DEFINE SEARCH IF NOT EXISTS words ")),
+                "{name} is used by something that ranks: {users:?}"
+            );
+        }
     }
 
     #[test]

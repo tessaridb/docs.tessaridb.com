@@ -34,7 +34,7 @@ about the engine than any benchmark table.
 |---|---|
 | **Engine** | Rust — a small HTTP server, not a static generator |
 | **Content** | records in TessariDB, written through the API. Not in this repository |
-| **Search** | TessariDB full-text: one analyzed field, one index, `search::score` ranking |
+| **Search** | TessariDB `DEFINE SEARCH`: title, heading and passage weighted as one document (BM25F), the store's snippet window, type-ahead from `COMPLETE` |
 | **Navigation** | the section tree is a graph in the store, walked with `RELATE` edges |
 | **Versions** | a namespace per released version, so the doc set is versioned the way the database is |
 | **Front end** | Next.js, server-rendered per request. It holds no content and never talks to the store |
