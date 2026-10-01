@@ -227,7 +227,17 @@ services:
     # copy of the store opened by 0.16.0-beta and by 0.17.1-beta backed up to the
     # same 9696227 bytes with **two** differing bytes, offset 20, 16 -> 17, and
     # offset 24, 0 -> 1. 0.17.0-beta was never deployed here.
-    image: tessaridb/tessaridb:0.17.1-beta
+    # 0.17.1-beta -> 0.18.1-beta (2026-10-01): backup
+    # /var/backups/docs/20261001T023751Z.tessarilog (10243393 bytes, verified)
+    # did NOT restore under 0.17.1-beta (log gap: its older records sit in the
+    # store log), which is the defect 0.18.1-beta fixes; a build of that fix
+    # restored it into an empty store with page, section, fragment and account
+    # answers equal to the store's. A copy backed up by 0.17.1-beta and by the
+    # fix to the same 10243722 bytes with **two** differing bytes, offset 20,
+    # 17 -> 18, and offset 24, 1 -> 0 (the fix build still said 0.18.0); its
+    # snapshot (4145665 bytes) restored to the same answers. 0.18.0-beta was
+    # never deployed here.
+    image: tessaridb/tessaridb:0.18.1-beta
     environment:
       TESSARIDB_STORE: /var/lib/tessaridb/store
       # Every interface, because the API is in a different container. That is
@@ -296,7 +306,7 @@ services:
     # Kept equal to the `db` image above, deliberately: this runs as a client
     # against that node, and a client from a different release is a difference
     # nobody planned for on the one path that declares accounts.
-    image: tessaridb/tessaridb:0.17.1-beta
+    image: tessaridb/tessaridb:0.18.1-beta
     environment:
       TESSARIDB_PASSWORD: ${DOCS_OWNER_PASSWORD:?set it in deploy/.env}
     command:
