@@ -237,7 +237,13 @@ services:
     # 17 -> 18, and offset 24, 1 -> 0 (the fix build still said 0.18.0); its
     # snapshot (4145665 bytes) restored to the same answers. 0.18.0-beta was
     # never deployed here.
-    image: tessaridb/tessaridb:0.18.1-beta
+    # 0.18.1-beta -> 0.19.0-beta (2026-10-01): snapshot
+    # /var/backups/docs/20261001T082207Z.tessarisnap (4158781 bytes, 1902
+    # records at version 5877) taken by the live 0.18.1-beta node, verified and
+    # restored by 0.19.0-beta; served on this network, the copy answered page,
+    # section, fragment and account byte-equal to the live node through one
+    # 0.19.0-beta client.
+    image: tessaridb/tessaridb:0.19.0-beta
     environment:
       TESSARIDB_STORE: /var/lib/tessaridb/store
       # Every interface, because the API is in a different container. That is
@@ -306,7 +312,7 @@ services:
     # Kept equal to the `db` image above, deliberately: this runs as a client
     # against that node, and a client from a different release is a difference
     # nobody planned for on the one path that declares accounts.
-    image: tessaridb/tessaridb:0.18.1-beta
+    image: tessaridb/tessaridb:0.19.0-beta
     environment:
       TESSARIDB_PASSWORD: ${DOCS_OWNER_PASSWORD:?set it in deploy/.env}
     command:
