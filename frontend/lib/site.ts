@@ -34,4 +34,4 @@ export const version = "0.19.0-beta";
 
 /** What this site is, in one sentence, wherever one is needed. */
 export const tagline =
-  "The documentation for TessariDB — a multi-model database engine in Rust: documents, graph, full-text, vectors, geometry, key-value, files, time and a vault over one store, reached by one language.";
+  "The documentation for TessariDB — the stack around the model, in one store: eleven engines under one language and one transaction.";

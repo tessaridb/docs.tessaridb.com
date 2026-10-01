@@ -26,8 +26,8 @@ export function Footer() {
             TessariDB
           </Link>
           <p>
-            Records, graphs, full-text, vectors and geometry in one store, and one
-            language over all of them.
+            The stack around the model, in one store: eleven engines under one
+            language and one transaction.
           </p>
           <p className="footer-note">
             This site is served out of TessariDB, and the search box is the
