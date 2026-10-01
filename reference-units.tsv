@@ -74,9 +74,13 @@ function	object::len
 function	object::merge
 function	object::values
 function	rand::uuid
+function	search::explain
 function	search::highlight
 function	search::ranks
 function	search::score
+function	search::snippet
+function	search::table_name
+function	session::context
 function	string::concat
 function	string::contains
 function	string::ends_with
@@ -117,12 +121,14 @@ form	ACK
 form	ADD RECIPIENT
 form	ALTER GROUP
 form	ALTER NAMESPACE
+form	ALTER REPLICA
 form	ALTER TABLE
 form	ALTER TABLE ALTER FIELD
 form	ALTER USER
 form	BACKUP
 form	BEGIN
 form	CANCEL
+form	CHANGE VAULT PASSPHRASE
 form	CHECK TABLE
 form	CLAIM
 form	CLAIM <record>
@@ -144,8 +150,12 @@ form	DEFINE NAMESPACE
 form	DEFINE NODE
 form	DEFINE QUEUE
 form	DEFINE REPLICA
+form	DEFINE ROLLUP
+form	DEFINE SEARCH
 form	DEFINE SERIES
 form	DEFINE SPACE
+form	DEFINE STOPWORDS
+form	DEFINE SYNONYMS
 form	DEFINE TABLE
 form	DEFINE TOPIC
 form	DEFINE TOPIC CONSUMER
@@ -170,7 +180,11 @@ form	DROP KAFKA CONSUMER
 form	DROP NAMESPACE
 form	DROP QUEUE
 form	DROP REPLICA
+form	DROP ROLLUP
+form	DROP SEARCH
 form	DROP SERIES
+form	DROP STOPWORDS
+form	DROP SYNONYMS
 form	DROP TABLE
 form	DROP TOPIC CONSUMER
 form	DROP USER
@@ -197,6 +211,7 @@ form	RELATE
 form	RELEASE
 form	RELEASE ALL
 form	REMOVE RECIPIENT
+form	RESTORE
 form	RETURN
 form	REVEAL
 form	REVOKE
