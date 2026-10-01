@@ -1,5 +1,5 @@
 #!/bin/bash
-# Takes a snapshot of the running store, checks it, and keeps the last few.
+# Takes a snapshot of the running store, checks it, and keeps 5 + 4 weekly + 2 monthly.
 #
 # A snapshot is every live record at one moment (`.tessarisnap`). It is the
 # backup from engine 0.18.0-beta on, because the node now keeps only the newest
@@ -40,7 +40,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE=(docker compose -f "${HERE}/compose.yaml" --env-file "${HERE}/.env")
 INTO="${DOCS_BACKUP_DIR:-/var/backups/docs}"
-KEEP="${DOCS_BACKUP_KEEP:-14}"
+
+log() { printf 'backup: %s\n' "$*" >&2; }
 # The published engine, read out of `compose.yaml` rather than repeated here.
 #
 # It has to be the same version the store runs, because a backup is verified by
@@ -65,8 +66,6 @@ if [[ -z "${IMAGE}" ]]; then
   log "no engine image found in compose.yaml and DOCS_DB_IMAGE is unset"
   exit 1
 fi
-
-log() { printf 'backup: %s\n' "$*" >&2; }
 
 mkdir -p "${INTO}"
 chmod 700 "${INTO}"
@@ -106,17 +105,7 @@ log "${OUT}"
 mv "${WORKING}" "${FILE}"
 log "kept ${FILE} ($(stat -c %s "${FILE}") bytes)"
 
-# Oldest first, and only whole files — a `.partial` left by a failed run is
-# removed above, never rotated.
-#
-# Every extension this script has written is listed on purpose: `.tessarisnap`
-# now, `.tessarilog` until 0.18.0-beta, and `.tessalog` before the name was
-# corrected. The older files are still here and still restorable. A glob that matched only the new one would leave them out of the
-# count and out of the rotation, so they would accumulate until the disk filled
-# — which looks like nothing at all right up until it looks like an outage.
-mapfile -t OLD < <(ls -1t "${INTO}"/*.tessarisnap "${INTO}"/*.tessarilog "${INTO}"/*.tessalog 2>/dev/null | tail -n "+$((KEEP + 1))")
-for stale in "${OLD[@]:-}"; do
-  [ -n "${stale}" ] || continue
-  rm -f "${stale}"
-  log "removed ${stale}"
-done
+# What is kept is decided by backup-retention.sh: the newest 5 copies, the
+# newest of each of the last 4 weeks and of the last 2 months, read from each
+# file's name. A `.partial` left by a failed run is removed above, never rotated.
+"${HERE}/backup-retention.sh" "${INTO}"
