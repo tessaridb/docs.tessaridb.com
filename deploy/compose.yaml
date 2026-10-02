@@ -256,12 +256,19 @@ services:
     # the live node; the new API then applied its search schema as the editor,
     # ingested 69 pages / 670 fragments into the copy and answered search with
     # snippets and type-ahead.
-    image: tessaridb/tessaridb:0.20.1-beta
+    # 0.20.1-beta -> 0.21.0-beta (2026-10-03): snapshot
+    # /var/backups/docs/20261002T212727Z.tessarisnap (4308519 bytes, 1936
+    # records at version 7455) taken by the live 0.20.1-beta node, verified and
+    # restored by 0.21.0-beta; served on this network, the copy answered page,
+    # section, fragment, account and holds byte-equal to the live node through
+    # one 0.21.0-beta client, and a MATCHES read via its index.
+    image: tessaridb/tessaridb:0.21.0-beta
     environment:
       TESSARIDB_STORE: /var/lib/tessaridb/store
       # Every interface, because the API is in a different container. That is
-      # the one thing this split widens: the wire protocol carries no TLS, so
-      # the network it is on is declared `internal` below.
+      # the one thing this split widens: this node is given no certificate, so
+      # its clients are served in the clear, and the network it is on is
+      # declared `internal` below.
       TESSARIDB_ADDRESS: 0.0.0.0:7654
       # HTTP on the internal network and nowhere else. It exists so the image's
       # own health check can ask the node `/health` — which the node answers
@@ -325,7 +332,7 @@ services:
     # Kept equal to the `db` image above, deliberately: this runs as a client
     # against that node, and a client from a different release is a difference
     # nobody planned for on the one path that declares accounts.
-    image: tessaridb/tessaridb:0.20.1-beta
+    image: tessaridb/tessaridb:0.21.0-beta
     environment:
       TESSARIDB_PASSWORD: ${DOCS_OWNER_PASSWORD:?set it in deploy/.env}
     command:
