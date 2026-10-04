@@ -272,6 +272,10 @@ services:
     # live 0.23 node (1988 records at 8323) verified and restored by 0.24.0-beta;
     # page, section, fragment, account and holds byte-equal through one
     # 0.24.0-beta client; MATCHES via index on the copy.
+    # 0.24.0-beta -> 0.25.0-beta (2026-10-04): snapshot 20261004T044242Z by the
+    # live 0.24 node (2016 records at 8598) verified and restored by 0.25.0-beta;
+    # page, section, fragment, account and holds byte-equal through one
+    # 0.25.0-beta client; MATCHES via index on the copy.
     # 0.22.0-beta -> 0.23.0-beta (2026-10-03): snapshot
     # /var/backups/docs/20261003T062035Z.tessarisnap (4497575 bytes, 1986
     # records at version 8212) taken by the live 0.22.0-beta node, verified and
@@ -279,7 +283,7 @@ services:
     # byte-equal to the live node through one 0.23.0-beta client, and a MATCHES
     # read via its index. This node is given no client certificate on purpose:
     # its clients are on the store network, which nothing outside reaches.
-    image: tessaridb/tessaridb:0.24.0-beta
+    image: tessaridb/tessaridb:0.25.0-beta
     environment:
       TESSARIDB_STORE: /var/lib/tessaridb/store
       # Every interface, because the API is in a different container. That is
@@ -349,7 +353,7 @@ services:
     # Kept equal to the `db` image above, deliberately: this runs as a client
     # against that node, and a client from a different release is a difference
     # nobody planned for on the one path that declares accounts.
-    image: tessaridb/tessaridb:0.24.0-beta
+    image: tessaridb/tessaridb:0.25.0-beta
     environment:
       TESSARIDB_PASSWORD: ${DOCS_OWNER_PASSWORD:?set it in deploy/.env}
     command:
