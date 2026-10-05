@@ -275,8 +275,9 @@ services:
     # 0.30.0-beta -> 0.31.0-beta (2026-10-05): snapshot 20261005T095738Z by the
     # live 0.30 node verified and restored by 0.31.0-beta; page, section,
     # fragment, account and holds byte-equal through one 0.31.0-beta client;
-    # MATCHES via index on the copy. The store already holds format 6 (created
-    # by a 0.28+ engine), so the release's lagging format changes nothing here.
+    # MATCHES via index on the copy. INFO FOR STORE on the live node answers
+    # format 5 / writes 6: the store predates 0.28 and is left unfinalized, so
+    # the 0.30.0-beta pin can still come back; nothing here needs format 6.
     # 0.29.0-beta -> 0.30.0-beta (2026-10-05): snapshot 20261005T080630Z by the
     # live 0.29 node verified and restored by 0.30.0-beta; page, section,
     # fragment, account and holds byte-equal through one 0.30.0-beta client;
