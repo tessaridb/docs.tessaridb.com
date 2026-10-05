@@ -55,6 +55,8 @@ function	geo::equals
 function	geo::intersects
 function	geo::touches
 function	geo::within
+function	json::encode
+function	json::parse
 function	math::abs
 function	math::ceil
 function	math::exp
