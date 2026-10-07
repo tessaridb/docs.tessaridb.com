@@ -143,30 +143,149 @@ a:hover {
   font-weight: 560;
   white-space: nowrap;
 }
-/* The release picker sits where the version badge sat, and looks like it: a
-   pill, not a form control, until it is used. */
+/* The release picker. Closed, it reads like the version badge it replaced — a
+   pill with the release in it; open, it is a short list anchored under it,
+   growing from its own corner so it reads as coming out of the pill. */
 .releases {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  position: relative;
+}
+.releases-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   font: inherit;
-  font-weight: 500;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 560;
+  font-variant-numeric: tabular-nums;
   color: var(--text-muted);
-  background: transparent;
+  background: var(--bg-raised);
   border: 1px solid var(--border-strong);
   border-radius: 999px;
-  padding: 0.1rem 0.4rem;
+  padding: 0.2rem 0.55rem 0.2rem 0.7rem;
   cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 160ms var(--ease-out);
 }
-.releases:hover {
+.releases-button svg {
+  transform: rotate(90deg);
+  transition: transform 180ms var(--ease-out);
+}
+.releases[data-open] .releases-button {
   color: var(--text);
   border-color: var(--brand);
 }
-.releases:focus-visible {
+.releases[data-open] .releases-button svg {
+  transform: rotate(-90deg);
+}
+.releases-button:active {
+  transform: scale(0.97);
+}
+.releases-button:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
-.releases option {
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .releases-button:hover {
+    color: var(--text);
+    border-color: var(--brand);
+  }
+}
+.releases-tag {
+  font-size: 0.62rem;
+  font-weight: 640;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brand);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 0.35rem;
+}
+.releases-list {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  left: 0;
+  z-index: 40;
+  min-width: 13rem;
+  margin: 0;
+  padding: 0.3rem;
+  list-style: none;
   background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  transform-origin: top left;
+  /* Closed: invisible and out of the accessibility tree, and the visibility
+     waits for the fade so the list does not vanish mid-transition. */
+  visibility: hidden;
+  opacity: 0;
+  transform: scale(0.95) translateY(-0.25rem);
+  transition:
+    opacity 160ms var(--ease-out),
+    transform 200ms var(--ease-out),
+    visibility 0s linear 200ms;
+}
+.releases-list:focus {
+  outline: none;
+}
+.releases[data-open] .releases-list {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 160ms var(--ease-out),
+    transform 200ms var(--ease-out),
+    visibility 0s;
+}
+/* Opened from the keyboard, or with motion reduced: there at once. */
+.releases-list[data-instant],
+.releases[data-open] .releases-list[data-instant] {
+  transition: none;
+}
+.releases-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: calc(var(--radius) - 3px);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.releases-option[aria-selected="true"] {
+  color: var(--text);
+  font-weight: 600;
+}
+.releases-option[data-active] {
+  background: var(--brand-soft);
+  color: var(--text);
+}
+.releases-option:active {
+  transform: scale(0.98);
+}
+.releases-mark {
+  display: inline-flex;
+  width: 14px;
+  color: var(--brand);
+}
+.releases-label {
+  flex: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .releases-button,
+  .releases-button svg,
+  .releases-list,
+  .releases[data-open] .releases-list {
+    transition: none;
+  }
+  .releases-button:active,
+  .releases-option:active {
+    transform: none;
+  }
 }
 
 /* Said at the top of every page of an archived release, so a reader who arrived
@@ -1061,9 +1180,25 @@ a:hover {
     display: block;
     margin: 0 0.15rem 0.9rem;
   }
-  .drawer-releases .releases {
+  /* In the drawer the picker is a row of its own, and its list opens in
+     place rather than over the tree. */
+  .drawer-releases .releases-button {
+    width: 100%;
     font-size: 0.85rem;
-    padding: 0.3rem 0.6rem;
+    padding: 0.45rem 0.75rem;
+  }
+  .drawer-releases .releases-current {
+    flex: 1;
+    text-align: start;
+  }
+  .drawer-releases .releases-list {
+    position: static;
+    margin-top: 0.4rem;
+    min-width: 0;
+    box-shadow: none;
+  }
+  .drawer-releases .releases:not([data-open]) .releases-list {
+    display: none;
   }
   .nav-backdrop {
     display: block;

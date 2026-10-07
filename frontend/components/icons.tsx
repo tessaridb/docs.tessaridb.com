@@ -316,3 +316,12 @@ export function Chevron(props: Props) {
     </Svg>
   );
 }
+
+/** The choice that is in force. */
+export function Check(props: Props) {
+  return (
+    <Svg {...props}>
+      <path d="M5 12.5 L10 17.5 L19 7" />
+    </Svg>
+  );
+}
