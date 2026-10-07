@@ -262,9 +262,12 @@ impl Store {
             return Err(Fault::ArchiveDiffers(differing.join(", ")));
         }
 
+        // Declared here as well as in the schema: a deployed API applies the
+        // schema as an editor, which may be refused a definition, and this runs
+        // as the store's owner.
         self.run_with(
             &format!(
-                "DELETE version:'{label}';\nCREATE version:'{label}' = {{ label: $label, namespace: $namespace, archived_at: time::now() }};"
+                "DEFINE COLLECTION IF NOT EXISTS version;\nDELETE version:'{label}';\nCREATE version:'{label}' = {{ label: $label, namespace: $namespace, archived_at: time::now() }};"
             ),
             vec![
                 ("label".to_owned(), text(label)),
