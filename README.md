@@ -36,7 +36,7 @@ about the engine than any benchmark table.
 | **Content** | records in TessariDB, written through the API. Not in this repository |
 | **Search** | TessariDB `DEFINE SEARCH`: title, heading and passage weighted as one document (BM25F), the store's snippet window, type-ahead from `COMPLETE` |
 | **Navigation** | the section tree is a graph in the store, walked with `RELATE` edges |
-| **Versions** | a namespace per released version, so the doc set is versioned the way the database is |
+| **Versions** | each release kept in a namespace of its own and served under `/v/<version>/` with its own tree and search index; the newest is the live site at the plain URLs |
 | **Front end** | Next.js, server-rendered per request. It holds no content and never talks to the store |
 | **Deploy** | three containers — database, API, front end — and a folder on the host |
 
@@ -102,6 +102,20 @@ docs publish --to https://docs.example --user ada --apply --prune   # and remove
 
 A page the site has and `content/` does not is **named and kept**. `--prune` is
 the only thing that deletes one, and it lists them before it does.
+
+At each release, once its pages are published, the live site is kept as that
+release:
+
+```sh
+docs archive --as 0.32.0-beta   # copy, compare page by page, list it
+```
+
+It copies the live namespace into one of its own (`v0_32_0_beta`), reads the
+copy back and compares every page and section with what it was copied from, and
+only then lists the release. The site's version picker offers every listed
+release at `/v/<version>/`, and the header search, its suggestions and the
+results page search the release being read. Archiving a version again replaces
+what it held. It runs as a store-wide user, because it declares a namespace.
 
 `serve` seeds from such a tree only when the store is **empty** and one happens
 to be there. It never rebuilds a populated store, because pages are edited
