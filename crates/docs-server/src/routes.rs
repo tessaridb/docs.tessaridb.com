@@ -62,6 +62,10 @@ pub struct Asked {
     /// How many results. Clamped by the store.
     #[serde(default = "twenty")]
     limit: u32,
+    /// The release to search, when it is not the live site. The site's search
+    /// box sends it this way, because its calls reach this route directly.
+    #[serde(default)]
+    v: String,
 }
 
 const fn twenty() -> u32 {
@@ -214,7 +218,12 @@ async fn section(State(site): State<Site>, Path(slug): Path<String>) -> Response
 }
 
 async fn search(State(site): State<Site>, Query(asked): Query<Asked>) -> Response {
-    search_in(&site, None, &asked).await
+    search_in(&site, release(&asked.v), &asked).await
+}
+
+/// `?v=` as a release: empty is the live site.
+fn release(asked: &str) -> Option<&str> {
+    (!asked.is_empty()).then_some(asked)
 }
 
 async fn search_at(
@@ -242,11 +251,14 @@ pub struct Typed {
     /// The characters so far.
     #[serde(default)]
     p: String,
+    /// The release, as on [`Asked`].
+    #[serde(default)]
+    v: String,
 }
 
 /// Words the site holds that begin with what is being typed.
 async fn suggest(State(site): State<Site>, Query(typed): Query<Typed>) -> Response {
-    suggest_in(&site, None, &typed.p).await
+    suggest_in(&site, release(&typed.v), &typed.p).await
 }
 
 async fn suggest_at(

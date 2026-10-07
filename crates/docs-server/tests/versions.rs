@@ -127,6 +127,37 @@ async fn an_archived_page_tree_and_search_answer_from_the_archive() {
     assert!(body.contains("archived"), "{body}");
 }
 
+/// The site's own search box calls `/api/search` and `/api/suggest` with the
+/// release as `?v=` — in production those paths reach this API directly, past
+/// the front end, so the parameter has to mean the same here as the path does.
+#[tokio::test]
+async fn search_and_suggest_take_the_release_as_a_parameter_too() {
+    let Some((site, _alone)) = site().await else {
+        eprintln!("skipped: DOCS_TEST_NODE is not set");
+        return;
+    };
+    let (status, body) = get(&site, "/api/search?q=archived&v=9.0.0").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("guide/start"), "{body}");
+    let (status, body) = get(&site, "/api/search?q=current&v=9.0.0").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body, "[]",
+        "the parameter was ignored and the live site searched"
+    );
+    let (status, body) = get(&site, "/api/suggest?p=archi&v=9.0.0").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("archived"), "{body}");
+    let (status, _) = get(&site, "/api/search?q=archived&v=8.0.0").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, body) = get(&site, "/api/search?q=current&v=").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("guide/start"),
+        "an empty parameter is the live site: {body}"
+    );
+}
+
 #[tokio::test]
 async fn an_unknown_or_malformed_version_is_not_found() {
     let Some((site, _alone)) = site().await else {
