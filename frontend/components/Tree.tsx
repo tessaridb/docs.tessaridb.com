@@ -36,7 +36,16 @@ import { Chevron, Close, named } from "./icons";
  * section holding the current page stays open, because a reader who opens the
  * navigation is asking *where am I*, not only *where else could I go*.
  */
-export function Tree({ nodes }: { nodes: TreeNode[] }) {
+export function Tree({
+  nodes,
+  base,
+  picker,
+}: {
+  nodes: TreeNode[];
+  base: string;
+  /** The release picker, shown at the top of the drawer on a narrow screen. */
+  picker: React.ReactNode;
+}) {
   const { open, setOpen } = useNav();
   const here = usePathname();
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
@@ -46,11 +55,11 @@ export function Tree({ nodes }: { nodes: TreeNode[] }) {
     setFolded(
       new Set(
         nodes
-          .filter((node) => node.kind !== "page" && !holds(node, here))
+          .filter((node) => node.kind !== "page" && !holds(node, here, base))
           .map((node) => node.slug),
       ),
     );
-  }, [open, nodes, here]);
+  }, [open, nodes, here, base]);
 
   function fold(slug: string) {
     setFolded((was) => {
@@ -77,9 +86,17 @@ export function Tree({ nodes }: { nodes: TreeNode[] }) {
           <Close size={18} />
         </button>
       </div>
+      <div className="drawer-releases">{picker}</div>
       <ul className="tree">
         {nodes.map((node) => (
-          <Branch key={node.slug} node={node} depth={0} folded={folded} fold={fold} />
+          <Branch
+            key={node.slug}
+            node={node}
+            depth={0}
+            folded={folded}
+            fold={fold}
+            base={base}
+          />
         ))}
       </ul>
     </nav>
@@ -87,9 +104,9 @@ export function Tree({ nodes }: { nodes: TreeNode[] }) {
 }
 
 /** Whether this section, at any depth, contains the page being read. */
-function holds(node: TreeNode, here: string): boolean {
-  if (node.kind === "page") return `/${node.slug}` === here;
-  return node.children.some((child) => holds(child, here));
+function holds(node: TreeNode, here: string, base: string): boolean {
+  if (node.kind === "page") return `${base}/${node.slug}` === here;
+  return node.children.some((child) => holds(child, here, base));
 }
 
 function Branch({
@@ -97,16 +114,18 @@ function Branch({
   depth,
   folded,
   fold,
+  base,
 }: {
   node: TreeNode;
   depth: number;
   folded: ReadonlySet<string>;
   fold: (slug: string) => void;
+  base: string;
 }) {
   const here = usePathname();
 
   if (node.kind === "page") {
-    const href = `/${node.slug}`;
+    const href = `${base}/${node.slug}`;
     return (
       <li>
         <Link href={href} aria-current={here === href ? "page" : undefined}>
@@ -136,7 +155,14 @@ function Branch({
       </button>
       <ul>
         {node.children.map((child) => (
-          <Branch key={child.slug} node={child} depth={depth + 1} folded={folded} fold={fold} />
+          <Branch
+            key={child.slug}
+            node={child}
+            depth={depth + 1}
+            folded={folded}
+            fold={fold}
+            base={base}
+          />
         ))}
       </ul>
     </li>

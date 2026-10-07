@@ -1,4 +1,5 @@
 import type { Page } from "@/lib/api";
+import { withinRelease } from "@/lib/version";
 import { CodeWrap } from "./CodeWrap";
 import { Alert } from "./icons";
 
@@ -9,7 +10,7 @@ import { Alert } from "./icons";
  * component does not parse Markdown and must not start: the ids in the body and
  * the anchors in the outline agree only because one piece of code produced both.
  */
-export function Article({ page }: { page: Page }) {
+export function Article({ page, base = "" }: { page: Page; base?: string }) {
   return (
     <>
       <article className="article">
@@ -30,7 +31,10 @@ export function Article({ page }: { page: Page }) {
         {/* The source is this repository's own content and pages written by
             users the store lets write — see the API's renderer for what that
             assumption rests on. */}
-        <div className="prose" dangerouslySetInnerHTML={{ __html: page.html }} />
+        <div
+          className="prose"
+          dangerouslySetInnerHTML={{ __html: withinRelease(page.html, base) }}
+        />
         {/* Decorates what the renderer emitted, after it is on the page. */}
         <CodeWrap />
       </article>

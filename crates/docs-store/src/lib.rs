@@ -13,6 +13,7 @@ pub mod accounts;
 pub mod ingest;
 pub mod read;
 pub mod schema;
+pub mod versions;
 pub mod write;
 
 use tessaridb_client::{Answer, Client, Value};
@@ -41,6 +42,20 @@ pub enum Fault {
     /// attacker can read their own probe out of.
     #[error("that is not a usable account name")]
     UnsafeName,
+
+    /// A version label that could not name a release.
+    #[error("that is not a usable version label")]
+    UnsafeVersion,
+
+    /// A namespace that cannot be spelled into `USE NAMESPACE` safely, or one an
+    /// archive may not be written into.
+    #[error("not a usable namespace: {0}")]
+    UnsafeNamespace(String),
+
+    /// An archive read back differently from what it was copied from. The
+    /// release is not listed.
+    #[error("the archive does not match its source: {0}")]
+    ArchiveDiffers(String),
 
     /// The node answered, but not with the shape this code reads.
     #[error("the node answered a {found} where {wanted} was expected")]
@@ -240,6 +255,24 @@ impl Store {
         let answers = self.client.run_with(script, signing_in, parameters).await?;
         self.credentials = None;
         Ok(answers)
+    }
+
+    /// Points this connection at another namespace's `docs` database.
+    ///
+    /// The same connection, so the same sign-in: a second connection would cost
+    /// the node a second password verification for one request.
+    ///
+    /// # Errors
+    ///
+    /// [`Fault::UnsafeNamespace`] for a name that cannot be spelled into the
+    /// statement, and [`Fault::Client`] when the node refuses.
+    pub async fn switch(&mut self, namespace: &str) -> Result<(), Fault> {
+        if !versions::is_safe_namespace(namespace) {
+            return Err(Fault::UnsafeNamespace(namespace.to_owned()));
+        }
+        self.run(&schema::use_namespace(namespace)).await?;
+        namespace.clone_into(&mut self.namespace);
+        Ok(())
     }
 
     /// Which version's namespace this connection is pointed at.

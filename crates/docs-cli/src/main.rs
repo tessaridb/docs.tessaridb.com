@@ -86,7 +86,30 @@ async fn run(asked: &Asked) -> Result<(), String> {
         Task::Ingest => ingest(asked).await,
         Task::Serve => serve(asked).await,
         Task::Publish => publish::publish(asked).await,
+        Task::Archive => archive(asked).await,
     }
+}
+
+/// Keeps the site in `--namespace` as release `--as`.
+///
+/// Runs as `DOCS_USER`, which must reach the whole store: an archive declares a
+/// namespace. The store compares the copy with its source before listing it.
+async fn archive(asked: &Asked) -> Result<(), String> {
+    let label = asked.release.as_deref().unwrap_or_default();
+    let into = asked
+        .into
+        .clone()
+        .unwrap_or_else(|| docs_store::versions::namespace_for(label));
+    let mut store = open(asked).await?;
+    let written = store
+        .archive(label, &into)
+        .await
+        .map_err(|fault| format!("the archive stopped: {fault}"))?;
+    println!(
+        "archived {} as {label} in {into}: {} sections, {} pages, {} fragments, {} edges; read back equal",
+        asked.namespace, written.sections, written.pages, written.fragments, written.edges
+    );
+    Ok(())
 }
 
 /// Reads the content tree and reports it. Opens no connection.

@@ -17,7 +17,7 @@ import { Search as SearchIcon } from "./icons";
  * this page — and it selects what is already there, so a reader who followed
  * *see all results* can retype without clearing first.
  */
-export function SearchAgain({ initial }: { initial: string }) {
+export function SearchAgain({ initial, base = "" }: { initial: string; base?: string }) {
   const [query, setQuery] = useState(initial);
   const field = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -39,7 +39,7 @@ export function SearchAgain({ initial }: { initial: string }) {
       onSubmit={(event) => {
         event.preventDefault();
         const asked = query.trim();
-        if (asked) router.push(`/search?q=${encodeURIComponent(asked)}`);
+        if (asked) router.push(`${base}/search?q=${encodeURIComponent(asked)}`);
       }}
     >
       <SearchIcon size={17} />

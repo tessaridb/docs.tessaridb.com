@@ -393,6 +393,28 @@ services:
   # namespace (`reader_v0_0_3`) and the previous namespace also stays servable,
   # which is what makes pointing `DOCS_NAMESPACE` back an actual rollback.
   #
+  # **The reader is store-wide, the editor is not.** The site keeps each
+  # released version of the documentation in a namespace of its own (`docs
+  # archive`, below), and the public read path reads every one of them, so the
+  # reader is declared without `ON` — a `viewer` of the whole store, which may
+  # read any namespace and write none. The editor stays confined to the live
+  # namespace: an archive is never edited through the API. A store whose reader
+  # was declared `ON` one namespace keeps it; name a new reader
+  # (`DOCS_READER_USER=reader_all`) and run this again.
+  #
+  # ── keeping a release: `docs archive` ─────────────────────────────────────
+  #
+  # At each release, after its pages are published, the live namespace is kept
+  # as that release — copied into a namespace of its own, compared page by page,
+  # and listed so the site's version picker offers it at `/v/<version>/`:
+  #
+  #   docker compose -f deploy/compose.yaml --env-file deploy/.env run --rm \
+  #     -e DOCS_USER="$owner" -e DOCS_PASSWORD="$owner_password" \
+  #     api docs archive --as 0.32.0-beta
+  #
+  # It runs as the store-wide owner because it declares a namespace. Archiving a
+  # version again replaces what it held.
+  #
   # It needs the owner declared by the `db` service above, and that owner has to
   # be **store-wide** — `DEFINE NAMESPACE` has no tenancy to check because its
   # subject is the store itself, so an owner scoped to one database is refused.
@@ -418,7 +440,7 @@ services:
         USE NAMESPACE ${DOCS_NAMESPACE:-v0_0_3_alpha};
         DEFINE DATABASE IF NOT EXISTS docs;
         USE DATABASE docs;
-        DEFINE USER IF NOT EXISTS ${DOCS_READER_USER:-reader} ON ${DOCS_NAMESPACE:-v0_0_3_alpha}.docs ROLE viewer PASSWORD '${DOCS_READER_PASSWORD:?set it in deploy/.env}';
+        DEFINE USER IF NOT EXISTS ${DOCS_READER_USER:-reader} ROLE viewer PASSWORD '${DOCS_READER_PASSWORD:?set it in deploy/.env}';
         DEFINE USER IF NOT EXISTS ${DOCS_EDITOR_USER:-editor} ON ${DOCS_NAMESPACE:-v0_0_3_alpha}.docs ROLE editor PASSWORD '${DOCS_EDITOR_PASSWORD:?set it in deploy/.env}';
     depends_on:
       db:
@@ -456,7 +478,8 @@ services:
       # Two identities, and the difference is the point. Writes run as the
       # editor; public reads run as the reader, which is a `viewer`, so a write
       # attempted on the read path is refused by the store rather than by this
-      # server's routing.
+      # server's routing. The reader is store-wide so that it can read the
+      # archived versions too — see `init`.
       DOCS_USER: ${DOCS_EDITOR_USER:-editor}
       DOCS_PASSWORD: ${DOCS_EDITOR_PASSWORD:?set it in deploy/.env}
       DOCS_READER_USER: ${DOCS_READER_USER:-reader}

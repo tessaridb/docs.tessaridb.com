@@ -23,8 +23,8 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use docs_content::parse;
-use docs_store::Fault;
 use docs_store::ingest::Section;
+use docs_store::{Fault, Store};
 use serde::Deserialize;
 
 use crate::{Site, session};
@@ -44,6 +44,11 @@ pub fn router(site: Site) -> Router {
             "/api/section/{slug}",
             get(section).put(put_section).delete(delete_section),
         )
+        .route("/api/versions", get(versions))
+        .route("/api/v/{version}/nav", get(nav_at))
+        .route("/api/v/{version}/page/{*slug}", get(page_at))
+        .route("/api/v/{version}/search", get(search_at))
+        .route("/api/v/{version}/suggest", get(suggest_at))
         .route("/api/health", get(health))
         .with_state(site)
 }
@@ -79,12 +84,61 @@ async fn health() -> &'static str {
     "ok"
 }
 
-async fn nav(State(site): State<Site>) -> Response {
+/// The archived releases, newest first — labels only. Where each one is kept
+/// is the store's business, and the label is the only address a reader needs.
+async fn versions(State(site): State<Site>) -> Response {
+    #[derive(serde::Serialize)]
+    struct Listed {
+        label: String,
+    }
     match site.reader().await {
-        Ok(mut store) => match store.tree().await {
-            Ok(tree) => json(StatusCode::OK, &tree),
+        Ok(mut store) => match store.versions().await {
+            Ok(found) => json(
+                StatusCode::OK,
+                &found
+                    .into_iter()
+                    .map(|version| Listed {
+                        label: version.label,
+                    })
+                    .collect::<Vec<_>>(),
+            ),
             Err(fault) => refused(&fault),
         },
+        Err(fault) => refused(&fault),
+    }
+}
+
+/// A read connection for the live site (`None`) or for an archived release.
+///
+/// An unknown release is a 404 here, so every versioned route answers it the
+/// same way and none of them can forget to.
+async fn open(site: &Site, version: Option<&str>) -> Result<Store, Box<Response>> {
+    let opened = match version {
+        None => site.reader().await.map(Some),
+        Some(label) => site.archived(label).await,
+    };
+    match opened {
+        Ok(Some(store)) => Ok(store),
+        Ok(None) => Err(Box::new(message(StatusCode::NOT_FOUND, "no such version"))),
+        Err(fault) => Err(Box::new(refused(&fault))),
+    }
+}
+
+async fn nav(State(site): State<Site>) -> Response {
+    nav_in(&site, None).await
+}
+
+async fn nav_at(State(site): State<Site>, Path(version): Path<String>) -> Response {
+    nav_in(&site, Some(&version)).await
+}
+
+async fn nav_in(site: &Site, version: Option<&str>) -> Response {
+    let mut store = match open(site, version).await {
+        Ok(store) => store,
+        Err(refusal) => return *refusal,
+    };
+    match store.tree().await {
+        Ok(tree) => json(StatusCode::OK, &tree),
         Err(fault) => refused(&fault),
     }
 }
@@ -114,25 +168,37 @@ pub struct Rendered {
 }
 
 async fn page(State(site): State<Site>, Path(slug): Path<String>) -> Response {
-    match site.reader().await {
-        Ok(mut store) => match store.article(&slug).await {
-            Ok(Some(article)) => {
-                let (outline, _) = docs_content::fragment::split(&article.title, &article.markdown);
-                json(
-                    StatusCode::OK,
-                    &Rendered {
-                        slug: article.slug,
-                        title: article.title,
-                        summary: article.summary,
-                        html: docs_content::to_html(&article.markdown),
-                        outline,
-                        unreleased: article.unreleased,
-                    },
-                )
-            }
-            Ok(None) => message(StatusCode::NOT_FOUND, "no such page"),
-            Err(fault) => refused(&fault),
-        },
+    page_in(&site, None, &slug).await
+}
+
+async fn page_at(
+    State(site): State<Site>,
+    Path((version, slug)): Path<(String, String)>,
+) -> Response {
+    page_in(&site, Some(&version), &slug).await
+}
+
+async fn page_in(site: &Site, version: Option<&str>, slug: &str) -> Response {
+    let mut store = match open(site, version).await {
+        Ok(store) => store,
+        Err(refusal) => return *refusal,
+    };
+    match store.article(slug).await {
+        Ok(Some(article)) => {
+            let (outline, _) = docs_content::fragment::split(&article.title, &article.markdown);
+            json(
+                StatusCode::OK,
+                &Rendered {
+                    slug: article.slug,
+                    title: article.title,
+                    summary: article.summary,
+                    html: docs_content::to_html(&article.markdown),
+                    outline,
+                    unreleased: article.unreleased,
+                },
+            )
+        }
+        Ok(None) => message(StatusCode::NOT_FOUND, "no such page"),
         Err(fault) => refused(&fault),
     }
 }
@@ -148,11 +214,24 @@ async fn section(State(site): State<Site>, Path(slug): Path<String>) -> Response
 }
 
 async fn search(State(site): State<Site>, Query(asked): Query<Asked>) -> Response {
-    match site.reader().await {
-        Ok(mut store) => match store.search(&asked.q, asked.limit).await {
-            Ok(hits) => json(StatusCode::OK, &hits),
-            Err(fault) => refused(&fault),
-        },
+    search_in(&site, None, &asked).await
+}
+
+async fn search_at(
+    State(site): State<Site>,
+    Path(version): Path<String>,
+    Query(asked): Query<Asked>,
+) -> Response {
+    search_in(&site, Some(&version), &asked).await
+}
+
+async fn search_in(site: &Site, version: Option<&str>, asked: &Asked) -> Response {
+    let mut store = match open(site, version).await {
+        Ok(store) => store,
+        Err(refusal) => return *refusal,
+    };
+    match store.search(&asked.q, asked.limit).await {
+        Ok(hits) => json(StatusCode::OK, &hits),
         Err(fault) => refused(&fault),
     }
 }
@@ -167,11 +246,24 @@ pub struct Typed {
 
 /// Words the site holds that begin with what is being typed.
 async fn suggest(State(site): State<Site>, Query(typed): Query<Typed>) -> Response {
-    match site.reader().await {
-        Ok(mut store) => match store.suggest(&typed.p, 6).await {
-            Ok(words) => json(StatusCode::OK, &words),
-            Err(fault) => refused(&fault),
-        },
+    suggest_in(&site, None, &typed.p).await
+}
+
+async fn suggest_at(
+    State(site): State<Site>,
+    Path(version): Path<String>,
+    Query(typed): Query<Typed>,
+) -> Response {
+    suggest_in(&site, Some(&version), &typed.p).await
+}
+
+async fn suggest_in(site: &Site, version: Option<&str>, typed: &str) -> Response {
+    let mut store = match open(site, version).await {
+        Ok(store) => store,
+        Err(refusal) => return *refusal,
+    };
+    match store.suggest(typed, 6).await {
+        Ok(words) => json(StatusCode::OK, &words),
         Err(fault) => refused(&fault),
     }
 }
@@ -280,6 +372,18 @@ pub(crate) fn refused(fault: &Fault) -> Response {
         // than from a content path, and the fault deliberately does not repeat
         // it back.
         Fault::UnsafeName => message(StatusCode::BAD_REQUEST, &fault.to_string()),
+        Fault::UnsafeVersion => message(StatusCode::NOT_FOUND, "no such version"),
+        Fault::ArchiveDiffers(_) => {
+            log::error!("{fault}");
+            message(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "the archive did not match",
+            )
+        }
+        Fault::UnsafeNamespace(_) => {
+            log::error!("a recorded version names an unusable namespace: {fault}");
+            message(StatusCode::BAD_GATEWAY, "the store answered unexpectedly")
+        }
         Fault::Client(_) if fault.refusal().is_some() => {
             // The store said no. That is about this caller and this statement,
             // never about the server being broken — 403, and the store's own

@@ -126,6 +126,27 @@ impl Site {
         Store::connect(&self.node, &self.namespace, credentials).await
     }
 
+    /// A read connection pointed at an archived release, or `None` when no
+    /// release carries `label`.
+    ///
+    /// One connection: it signs in against the live namespace, finds the label
+    /// in the list kept there, and moves to the release's namespace. The reading
+    /// account must therefore reach every namespace — a store-wide `viewer`.
+    ///
+    /// # Errors
+    ///
+    /// [`Fault::Client`] when the node is unreachable or refuses.
+    pub async fn archived(&self, label: &str) -> Result<Option<Store>, Fault> {
+        let mut store = self.reader().await?;
+        match store.namespace_of(label).await? {
+            Some(namespace) => {
+                store.switch(&namespace).await?;
+                Ok(Some(store))
+            }
+            None => Ok(None),
+        }
+    }
+
     /// A connection for the write routes, as the `editor` service account.
     ///
     /// It does not carry the caller's identity, because the caller no longer has

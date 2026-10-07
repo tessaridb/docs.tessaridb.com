@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { search } from "@/lib/api";
+import { release } from "@/lib/version";
 
 /**
  * The search box's route.
@@ -17,11 +18,14 @@ import { search } from "@/lib/api";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const asked = new URL(request.url).searchParams.get("q") ?? "";
+  const params = new URL(request.url).searchParams;
+  const asked = params.get("q") ?? "";
   if (asked.trim().length < 2) return NextResponse.json([]);
+  const archived = release(params.get("v"));
+  if (archived === undefined) return NextResponse.json([]);
 
   try {
-    return NextResponse.json(await search(asked));
+    return NextResponse.json(await search(asked, 20, archived));
   } catch (fault) {
     // The reader gets no results rather than an error page: a search box that
     // breaks the page it sits in is worse than one that finds nothing, and the

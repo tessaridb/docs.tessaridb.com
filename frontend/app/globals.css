@@ -143,14 +143,45 @@ a:hover {
   font-weight: 560;
   white-space: nowrap;
 }
-.header-what small {
+/* The release picker sits where the version badge sat, and looks like it: a
+   pill, not a form control, until it is used. */
+.releases {
+  font: inherit;
   font-weight: 500;
   font-size: 0.7rem;
-  color: var(--text-faint);
+  color: var(--text-muted);
+  background: transparent;
   border: 1px solid var(--border-strong);
   border-radius: 999px;
-  padding: 0.05rem 0.45rem;
-  letter-spacing: 0;
+  padding: 0.1rem 0.4rem;
+  cursor: pointer;
+}
+.releases:hover {
+  color: var(--text);
+  border-color: var(--brand);
+}
+.releases:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.releases option {
+  color: var(--text);
+  background: var(--bg);
+}
+
+/* Said at the top of every page of an archived release, so a reader who arrived
+   from a search engine knows they are not reading the current one. */
+.release-note {
+  /* A row of its own above the article and its outline, not a third column. */
+  grid-column: 1 / -1;
+  max-width: var(--measure);
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--text-muted);
+  font-size: 0.9rem;
 }
 
 .header-spacer {
@@ -811,6 +842,7 @@ a:hover {
    narrow-screen block holds only what changes with the width. */
 .nav-button,
 .drawer-head,
+.drawer-releases,
 .nav-backdrop,
 .search-link {
   display: none;
@@ -1025,6 +1057,14 @@ a:hover {
   .drawer-head {
     display: flex;
   }
+  .drawer-releases {
+    display: block;
+    margin: 0 0.15rem 0.9rem;
+  }
+  .drawer-releases .releases {
+    font-size: 0.85rem;
+    padding: 0.3rem 0.6rem;
+  }
   .nav-backdrop {
     display: block;
   }
@@ -1042,7 +1082,9 @@ a:hover {
   }
   /* The mark and "Docs" carry it; the version is detail a phone header has no
      room for and a reader on one is not choosing between builds. */
-  .header-what small {
+  /* The header has no room for the picker on a phone, so it moves into the
+     drawer, where the reader goes to change where they are anyway. */
+  .header-what .releases {
     display: none;
   }
   /* The search page is the page here, so it gets the width the article had. */

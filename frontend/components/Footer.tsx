@@ -16,12 +16,12 @@ import { version } from "@/lib/site";
  * link that answers `404` reads as a broken site rather than as a closed
  * source; the address to write to is in the licence line instead.
  */
-export function Footer() {
+export function Footer({ shown = version, base = "" }: { shown?: string; base?: string }) {
   return (
     <footer className="footer">
       <div className="footer-grid">
         <div className="footer-about">
-          <Link href="/" className="footer-brand">
+          <Link href={base === "" ? "/" : base} className="footer-brand">
             <Mark size={20} />
             TessariDB
           </Link>
@@ -39,16 +39,16 @@ export function Footer() {
           <h2>Documentation</h2>
           <ul>
             <li>
-              <Link href="/start/install">Getting started</Link>
+              <Link href={`${base}/start/install`}>Getting started</Link>
             </li>
             <li>
-              <Link href="/query-language/records">TessariQL</Link>
+              <Link href={`${base}/query-language/records`}>TessariQL</Link>
             </li>
             <li>
-              <Link href="/overview/engines">The engines</Link>
+              <Link href={`${base}/overview/engines`}>The engines</Link>
             </li>
             <li>
-              <Link href="/reference/statements">Reference</Link>
+              <Link href={`${base}/reference/statements`}>Reference</Link>
             </li>
           </ul>
         </nav>
@@ -78,10 +78,10 @@ export function Footer() {
               <a href="https://github.com/tessaridb/tessaridb-sdk-rust">Rust client</a>
             </li>
             <li>
-              <Link href="/clients/protocol">Writing a client</Link>
+              <Link href={`${base}/clients/protocol`}>Writing a client</Link>
             </li>
             <li>
-              <Link href="/operations/serving">Running a node</Link>
+              <Link href={`${base}/operations/serving`}>Running a node</Link>
             </li>
           </ul>
         </nav>
@@ -104,7 +104,7 @@ export function Footer() {
 
       <div className="footer-legal">
         <p>
-          <strong>TessariDB {version}</strong> &middot; &copy; 2026 boogvar
+          <strong>TessariDB {shown}</strong> &middot; &copy; 2026 boogvar
         </p>
         <p>
           Business Source License 1.1. Free in production, including

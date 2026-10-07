@@ -32,6 +32,8 @@ pub enum Task {
     Serve,
     /// Write the content tree to a running site, over its API.
     Publish,
+    /// Keep the site as it stands as one release, in a namespace of its own.
+    Archive,
 }
 
 /// A parsed command line, with every default already applied.
@@ -57,6 +59,10 @@ pub struct Asked {
     pub apply: bool,
     /// `publish`: whether a page the site has and the corpus lacks is removed.
     pub prune: bool,
+    /// `archive`: the release label the site is kept as, e.g. `0.32.0-beta`.
+    pub release: Option<String>,
+    /// `archive`: the namespace it is kept in. Derived from the label when absent.
+    pub into: Option<String>,
 }
 
 /// What to print when the command line does not parse, and for `--help`.
@@ -72,6 +78,7 @@ docs — the documentation site for TessariDB
   docs ingest                    replace what the store holds with content/
   docs serve                     serve the API, seeding the store only if empty
   docs publish --to <url>        write content/ to a running site, over its API
+  docs archive --as <version>    keep the site as it stands as that release
 
 The store owns the content. content/ is where it is written and reviewed, and
 what an empty store is seeded from — but pages are also edited through the API,
@@ -87,6 +94,9 @@ Options
   --user <name>      publish: the account to sign in as
   --apply            publish: write. Without it, publish only says what it would
   --prune            publish: also remove pages the site has and content/ lacks
+  --as <version>     archive: the release label, e.g. 0.32.0-beta
+  --into <ns>        archive: the namespace to keep it in (default: v + the
+                     label with . and - as _, e.g. v0_32_0_beta)
   --help             this
   --version          the version this was built from
 
@@ -116,6 +126,10 @@ publish and ingest do the same job from opposite sides. ingest runs beside the
 store and replaces everything it holds; publish runs anywhere, writes only what
 differs, and removes nothing unless asked. A deployment seeds with ingest and is
 maintained with publish.
+
+archive copies the site from --namespace into a namespace of its own and lists
+it there as a release the site can show. It declares a namespace, so it runs as
+a store-wide user. Archiving a label again replaces what it held.
 ";
 
 /// Either the parsed arguments, or something to print and the code to exit with.
@@ -142,11 +156,14 @@ pub fn read(words: &[String], environment: &dyn Fn(&str) -> Option<String>) -> R
         "ingest" => Task::Ingest,
         "serve" => Task::Serve,
         "publish" => Task::Publish,
+        "archive" => Task::Archive,
         "--help" | "-h" | "help" => return Read::Say(USAGE.to_owned(), 0),
         "--version" => return Read::Say(format!("docs {}\n", env!("CARGO_PKG_VERSION")), 0),
         other => {
             return Read::Say(
-                format!("{other} is not one of check, ingest, serve or publish\n\n{USAGE}"),
+                format!(
+                    "{other} is not one of check, ingest, serve, publish or archive\n\n{USAGE}"
+                ),
                 2,
             );
         }
@@ -163,6 +180,8 @@ pub fn read(words: &[String], environment: &dyn Fn(&str) -> Option<String>) -> R
         user: environment(PUBLISH_USER).filter(|held| !held.is_empty()),
         apply: false,
         prune: false,
+        release: None,
+        into: None,
     };
 
     while let Some(word) = rest.next() {
@@ -178,6 +197,14 @@ pub fn read(words: &[String], environment: &dyn Fn(&str) -> Option<String>) -> R
             "--user" => match rest.next() {
                 Some(value) => asked.user = Some(value.clone()),
                 None => return Read::Say(format!("--user wants a name\n\n{USAGE}"), 2),
+            },
+            "--as" => match rest.next() {
+                Some(value) => asked.release = Some(value.clone()),
+                None => return missing("--as"),
+            },
+            "--into" => match rest.next() {
+                Some(value) => asked.into = Some(value.clone()),
+                None => return missing("--into"),
             },
             "--content" => match rest.next() {
                 Some(value) => asked.content = PathBuf::from(value),
@@ -209,6 +236,12 @@ pub fn read(words: &[String], environment: &dyn Fn(&str) -> Option<String>) -> R
             "--ingest belongs to serve; ingest already does\n".to_owned(),
             2,
         );
+    }
+    if task == Task::Archive && asked.release.is_none() {
+        return Read::Say(format!("archive wants --as <version>\n\n{USAGE}"), 2);
+    }
+    if task != Task::Archive && (asked.release.is_some() || asked.into.is_some()) {
+        return Read::Say("--as and --into belong to archive\n".to_owned(), 2);
     }
     Read::Do(Box::new(asked))
 }
@@ -325,5 +358,21 @@ mod tests {
     #[test]
     fn no_arguments_at_all_is_the_usage_and_a_failure() {
         assert_eq!(read(&[], &nothing), Read::Say(super::USAGE.to_owned(), 2));
+    }
+
+    #[test]
+    fn archive_takes_a_label_and_an_optional_namespace() {
+        let held = asked(&["archive", "--as", "0.32.0-beta"]).expect("parses");
+        assert_eq!(held.task, Task::Archive);
+        assert_eq!(held.release.as_deref(), Some("0.32.0-beta"));
+        assert_eq!(held.into, None);
+        let held = asked(&["archive", "--as", "1.0.0", "--into", "v1"]).expect("parses");
+        assert_eq!(held.into.as_deref(), Some("v1"));
+    }
+
+    #[test]
+    fn archive_without_a_label_and_a_label_without_archive_are_refused() {
+        assert!(asked(&["archive"]).is_err());
+        assert!(asked(&["publish", "--as", "1.0.0"]).is_err());
     }
 }

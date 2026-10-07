@@ -109,6 +109,10 @@ DEFINE BUCKET IF NOT EXISTS asset;
 DEFINE COLLECTION IF NOT EXISTS account;
 DEFINE COLLECTION IF NOT EXISTS token;
 
+-- The releases kept apart from this one, each in a namespace of its own. Written
+-- by `docs archive`; read to answer which versions the site can show.
+DEFINE COLLECTION IF NOT EXISTS version;
+
 DEFINE FIELD IF NOT EXISTS text ON fragment TYPE string ANALYZER english;
 DEFINE INDEX IF NOT EXISTS by_text ON fragment FIELDS text SEARCH;
 

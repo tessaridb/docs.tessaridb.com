@@ -17,14 +17,18 @@ import { Search as SearchIcon } from "./icons";
  *
  * A result links to `page#anchor`, and the anchor is the one the API assigned
  * when it rendered the page, so the reader lands on the passage that matched.
+ *
+ * It searches the release being read: `archived` names it, and the results,
+ * the completions and "see all results" all stay inside it under `base`.
  */
-export function Search() {
+export function Search({ base, archived }: { base: string; archived: string | null }) {
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [words, setWords] = useState<string[]>([]);
   const [active, setActive] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const field = useRef<HTMLInputElement>(null);
+  const release = archived === null ? "" : `&v=${encodeURIComponent(archived)}`;
 
   // Debounced, and every in-flight request is abandoned when a newer one
   // starts — otherwise a slow answer for `an` can arrive after the answer for
@@ -38,7 +42,7 @@ export function Search() {
     const stop = new AbortController();
     const typing = lastWord(query);
     const timer = setTimeout(() => {
-      fetch(`/api/search?q=${encodeURIComponent(asked)}`, {
+      fetch(`/api/search?q=${encodeURIComponent(asked)}${release}`, {
         signal: stop.signal,
       })
         .then((response) => (response.ok ? response.json() : []))
@@ -52,7 +56,7 @@ export function Search() {
       // The word still being typed, completed from the words the site holds.
       // Asked only while a word is in progress: after a space it is finished.
       if (typing.length >= 3) {
-        fetch(`/api/suggest?p=${encodeURIComponent(typing)}`, {
+        fetch(`/api/suggest?p=${encodeURIComponent(typing)}${release}`, {
           signal: stop.signal,
         })
           .then((response) => (response.ok ? response.json() : []))
@@ -72,7 +76,7 @@ export function Search() {
       clearTimeout(timer);
       stop.abort();
     };
-  }, [query]);
+  }, [query, release]);
 
   // `/` focuses the box, the way every documentation site does — but not while
   // the reader is already typing somewhere, which would swallow the character.
@@ -106,7 +110,7 @@ export function Search() {
   }, []);
 
   /** Where "see all results" goes, and what Enter falls through to. */
-  const everything = `/search?q=${encodeURIComponent(query.trim())}`;
+  const everything = `${base}/search?q=${encodeURIComponent(query.trim())}`;
 
   function onKeyDown(event: React.KeyboardEvent) {
     if (!hits || hits.length === 0) {
@@ -132,7 +136,7 @@ export function Search() {
     if (event.key === "Enter") {
       event.preventDefault();
       const chosen = hits[active];
-      window.location.href = chosen ? link(chosen) : everything;
+      window.location.href = chosen ? link(base, chosen) : everything;
       setHits(null);
     }
   }
@@ -194,7 +198,7 @@ export function Search() {
             {hits.map((hit, at) => (
               <Link
                 key={`${hit.page}#${hit.anchor}`}
-                href={link(hit)}
+                href={link(base, hit)}
                 className="result"
                 role="option"
                 aria-selected={at === active}
@@ -242,6 +246,6 @@ function completed(query: string, word: string): string {
 }
 
 /** A hit's destination. The lead of a page has no anchor, so it has no hash. */
-function link(hit: Hit): string {
-  return hit.anchor ? `/${hit.page}#${hit.anchor}` : `/${hit.page}`;
+function link(base: string, hit: Hit): string {
+  return hit.anchor ? `${base}/${hit.page}#${hit.anchor}` : `${base}/${hit.page}`;
 }
