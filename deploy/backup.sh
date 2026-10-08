@@ -31,10 +31,17 @@
 #     tessaridb/tessaridb:0.18.0-beta /store/store --backup /out/manual.tessarisnap
 #   docker compose ... start db
 #
-# Two halves in two places, and not by preference: `xxd` is not in the database
-# image and the engine binary is not on the host. So the node is asked inside the
-# container, the hex it answers with is decoded here, and the file is checked by
-# the engine again over a read-only mount.
+# The node writes the file itself, into its own backup folder, and answers with
+# its path and size. It used to answer with the snapshot as a value, decoded here
+# from hex, and that stopped working on 2026-10-09 once the snapshot outgrew the
+# 16 MiB a single wire frame may carry: the connection ended mid-frame and the
+# script kept nothing. `BACKUP STATE TO` streams to disk instead of holding the
+# snapshot in memory, then syncs and verifies it where it was written.
+#
+# The folder is `TESSARIDB_BACKUP_DIR`, which the image sets inside the store's
+# own directory, so the file is copied out of the container and removed there.
+# The engine binary is not on the host, so the copy is checked by the engine
+# again over a read-only mount before it is kept.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,17 +85,23 @@ WORKING="${FILE}.partial"
 
 log "asking the node for a snapshot"
 # The password is read from the container's own environment. An argument would
-# be in the process table for anybody on the host to see.
-"${COMPOSE[@]}" exec -T db sh -c '
+# be in the process table for anybody on the host to see. The file name is the
+# statement's only literal and is made here from the date, never from input;
+# the statement takes a quoted name and no parameter.
+NAME="${STAMP}.tessarisnap"
+IN_DB="$("${COMPOSE[@]}" exec -T db printenv TESSARIDB_BACKUP_DIR)/${NAME}"
+"${COMPOSE[@]}" exec -T -e NAME="${NAME}" db sh -c '
     TESSARIDB_PASSWORD="$TESSARIDB_INITIAL_PASSWORD" tessaridb \
       --at "127.0.0.1:${TESSARIDB_ADDRESS##*:}" \
       --user "${TESSARIDB_INITIAL_USER:-owner}" \
-      -e "BACKUP STATE;"' \
-  | grep -o '^0x[0-9a-f]*' | cut -c3- | xxd -r -p > "${WORKING}"
+      -e "BACKUP STATE TO '"'"'${NAME}'"'"';"' >&2
+
+"${COMPOSE[@]}" cp "db:${IN_DB}" "${WORKING}"
+"${COMPOSE[@]}" exec -T db rm -f "${IN_DB}"
 
 if [ ! -s "${WORKING}" ]; then
   rm -f "${WORKING}"
-  log "the node answered with nothing"
+  log "the node wrote nothing"
   exit 1
 fi
 
