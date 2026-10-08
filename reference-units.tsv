@@ -40,6 +40,7 @@ function	crypto::md5
 function	crypto::sha1
 function	crypto::sha256
 function	crypto::sha512
+function	duration::from_secs
 function	encoding::base64
 function	encoding::base64_decode
 function	encoding::hex
@@ -154,6 +155,7 @@ form	DEFINE INDEX
 form	DEFINE KAFKA CONSUMER
 form	DEFINE NAMESPACE
 form	DEFINE NODE
+form	DEFINE PARAM
 form	DEFINE QUEUE
 form	DEFINE REPLICA
 form	DEFINE ROLLUP
@@ -182,9 +184,11 @@ form	DROP FIELD
 form	DROP GEO
 form	DROP GRAPH
 form	DROP GROUP
+form	DROP IF EXISTS
 form	DROP INDEX
 form	DROP KAFKA CONSUMER
 form	DROP NAMESPACE
+form	DROP PARAM
 form	DROP QUEUE
 form	DROP REPLICA
 form	DROP ROLLUP
