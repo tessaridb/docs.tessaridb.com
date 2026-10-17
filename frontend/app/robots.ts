@@ -20,10 +20,14 @@ import { origin } from "@/lib/site";
  * `/api/` is this front end's own route handler, which exists so the browser can
  * reach search without reaching the API directly. It answers JSON. Nothing there
  * is a document.
+ *
+ * `/_next/` is not disallowed: it holds the stylesheets and scripts a search
+ * engine needs to render a page, and a page whose stylesheet is blocked is
+ * judged as the unstyled one.
  */
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: [{ userAgent: "*", allow: "/", disallow: ["/api/", "/search", "/_next/"] }],
+    rules: [{ userAgent: "*", allow: "/", disallow: ["/api/", "/search"] }],
     sitemap: `${origin}/sitemap.xml`,
     host: origin,
   };
