@@ -215,6 +215,13 @@ a:hover {
   border-radius: 999px;
   padding: 0 0.35rem;
 }
+/* A long release list scrolls rather than running off the screen: it grows to
+   about a third of the window, and never stops short of a dozen rows. */
+.releases-list {
+  max-height: max(14rem, 33vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .releases-list,
 .projects-list {
   position: absolute;

@@ -49,6 +49,13 @@ export function useListbox(
     if (open) list.current?.focus();
   }, [open]);
 
+  // The highlighted row stays in view as the arrows move it through a list
+  // long enough to scroll.
+  useEffect(() => {
+    if (!open) return;
+    list.current?.children.item(active)?.scrollIntoView({ block: "nearest" });
+  }, [open, active]);
+
   useEffect(() => {
     if (!open) return;
     function onPointer(event: PointerEvent) {
