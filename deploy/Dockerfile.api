@@ -2,8 +2,8 @@
 #
 # It carries no engine binary and builds no engine: the database is its own
 # image (`Dockerfile.db`), reached over the compose network. That is what keeps
-# this image buildable in a couple of minutes while the one that compiles a
-# vendored RocksDB is rebuilt only when the engine revision moves.
+# this image buildable in a couple of minutes while the database image is
+# built and published on its own.
 #
 # There is no start script. Everything this needs — the node's address, the
 # namespace, the bind address, and the two identities it signs in as — arrives
