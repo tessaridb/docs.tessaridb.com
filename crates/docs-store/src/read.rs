@@ -2,7 +2,11 @@
 
 use serde::Serialize;
 
+use crate::projects::Project;
 use crate::{Fault, Store, records, schema::is_safe_slug, text_of};
+
+/// The most results one search pass asks the store for.
+const CEILING: u32 = 50;
 
 /// A node of the left-hand tree, with whatever hangs beneath it.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -232,13 +236,46 @@ impl Store {
     ///
     /// Returns [`Fault::Client`] when the node refuses.
     pub async fn search(&mut self, query: &str, limit: u32) -> Result<Vec<Hit>, Fault> {
+        self.search_where(query, limit, None).await
+    }
+
+    /// A search that answers only with one project's pages.
+    ///
+    /// The live namespace holds every product, so the narrowing is applied to
+    /// what each pass returns. Each pass therefore asks the store for its
+    /// ceiling rather than for the page size: a page of ten taken before the
+    /// narrowing could be ten of another product's passages and leave nothing.
+    /// The order is still the store's — the narrowing only removes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Fault::Client`] when the node refuses.
+    pub async fn search_in(
+        &mut self,
+        project: Project,
+        query: &str,
+        limit: u32,
+    ) -> Result<Vec<Hit>, Fault> {
+        self.search_where(query, limit, Some(project)).await
+    }
+
+    async fn search_where(
+        &mut self,
+        query: &str,
+        limit: u32,
+        scope: Option<Project>,
+    ) -> Result<Vec<Hit>, Fault> {
         let query = query.trim();
         if query.is_empty() {
             return Ok(Vec::new());
         }
-        let limit = limit.clamp(1, 50);
+        let limit = limit.clamp(1, CEILING);
         let room = usize::try_from(limit).unwrap_or(usize::MAX);
-        let mut hits = self.ranked(query, limit).await?;
+        let asked = if scope.is_some() { CEILING } else { limit };
+        let kept = |page: &str| scope.is_none_or(|project| project.holds(page));
+        let mut hits = self.ranked(query, asked).await?;
+        hits.retain(|hit| kept(&hit.page));
+        hits.truncate(room);
         if hits.len() >= room {
             return Ok(hits);
         }
@@ -248,7 +285,8 @@ impl Store {
         };
 
         if long_enough(partial) {
-            let prefixed = self.prefixed(finished, partial, limit).await?;
+            let mut prefixed = self.prefixed(finished, partial, asked).await?;
+            prefixed.retain(|found| kept(&found.hit.page));
 
             // Finish the word, then search for it. The prefix pass says which
             // fragments hold a word starting with those characters; the words in
@@ -263,8 +301,10 @@ impl Store {
                 } else {
                     format!("{finished} {word}")
                 };
-                for hit in self.ranked(&completed, limit).await? {
-                    push(&mut hits, hit, room);
+                for hit in self.ranked(&completed, asked).await? {
+                    if kept(&hit.page) {
+                        push(&mut hits, hit, room);
+                    }
                 }
             }
 
@@ -280,13 +320,16 @@ impl Store {
             // The stub is below the engine's floor, so it is dropped rather than
             // sent. Ranking the finished words alone is what the reader is part
             // of the way towards asking for.
-            for hit in self.ranked(finished, limit).await? {
-                push(&mut hits, hit, room);
+            for hit in self.ranked(finished, asked).await? {
+                if kept(&hit.page) {
+                    push(&mut hits, hit, room);
+                }
             }
         }
 
         if hits.len() < room {
-            let found = self.corrected(query, limit).await?;
+            let mut found = self.corrected(query, asked).await?;
+            found.retain(|held| kept(&held.hit.page));
 
             // Same shape as the prefix pass, and for the same reason. The fuzzy
             // pass says which fragments hold a word close to the one typed; the
@@ -295,8 +338,10 @@ impl Store {
             // because `search::score` scores the string it is handed and
             // `vecter` is not a term the collection holds.
             if let Some(repaired) = repair(&found, query) {
-                for hit in self.ranked(&repaired, limit).await? {
-                    push(&mut hits, hit, room);
+                for hit in self.ranked(&repaired, asked).await? {
+                    if kept(&hit.page) {
+                        push(&mut hits, hit, room);
+                    }
                 }
             }
 

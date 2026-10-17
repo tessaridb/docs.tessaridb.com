@@ -11,6 +11,7 @@
 
 pub mod accounts;
 pub mod ingest;
+pub mod projects;
 pub mod read;
 pub mod schema;
 pub mod versions;

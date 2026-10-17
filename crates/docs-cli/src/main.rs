@@ -90,7 +90,8 @@ async fn run(asked: &Asked) -> Result<(), String> {
     }
 }
 
-/// Keeps the site in `--namespace` as release `--as`.
+/// Keeps the site in `--namespace` — or one product's section of it, with
+/// `--project` — as release `--as`.
 ///
 /// Runs as `DOCS_USER`, which must reach the whole store: an archive declares a
 /// namespace. The store compares the copy with its source before listing it.
@@ -99,15 +100,20 @@ async fn archive(asked: &Asked) -> Result<(), String> {
     let into = asked
         .into
         .clone()
-        .unwrap_or_else(|| docs_store::versions::namespace_for(label));
+        .unwrap_or_else(|| docs_store::versions::namespace_for(asked.project, label));
     let mut store = open(asked).await?;
     let written = store
-        .archive(label, &into)
+        .archive(asked.project, label, &into)
         .await
         .map_err(|fault| format!("the archive stopped: {fault}"))?;
     println!(
-        "archived {} as {label} in {into}: {} sections, {} pages, {} fragments, {} edges; read back equal",
-        asked.namespace, written.sections, written.pages, written.fragments, written.edges
+        "archived {} ({}) as {label} in {into}: {} sections, {} pages, {} fragments, {} edges; read back equal",
+        asked.namespace,
+        asked.project.slug(),
+        written.sections,
+        written.pages,
+        written.fragments,
+        written.edges
     );
     Ok(())
 }

@@ -37,6 +37,7 @@ pub mod session;
 
 use std::sync::Arc;
 
+use docs_store::projects::Project;
 use docs_store::{Fault, Store};
 
 pub use crate::auth::{Caller, Presented};
@@ -126,8 +127,8 @@ impl Site {
         Store::connect(&self.node, &self.namespace, credentials).await
     }
 
-    /// A read connection pointed at an archived release, or `None` when no
-    /// release carries `label`.
+    /// A read connection pointed at an archived release of `project`, or
+    /// `None` when no release of it carries `label`.
     ///
     /// One connection: it signs in against the live namespace, finds the label
     /// in the list kept there, and moves to the release's namespace. The reading
@@ -136,9 +137,9 @@ impl Site {
     /// # Errors
     ///
     /// [`Fault::Client`] when the node is unreachable or refuses.
-    pub async fn archived(&self, label: &str) -> Result<Option<Store>, Fault> {
+    pub async fn archived(&self, project: Project, label: &str) -> Result<Option<Store>, Fault> {
         let mut store = self.reader().await?;
-        match store.namespace_of(label).await? {
+        match store.namespace_of(project, label).await? {
             Some(namespace) => {
                 store.switch(&namespace).await?;
                 Ok(Some(store))

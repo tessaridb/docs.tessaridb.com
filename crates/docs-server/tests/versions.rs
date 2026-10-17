@@ -12,6 +12,7 @@ use axum::http::{Request, StatusCode};
 use docs_content::parse;
 use docs_server::Site;
 use docs_store::ingest::{Corpus, Section};
+use docs_store::projects::Project;
 use tower::ServiceExt;
 
 static NODE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -49,7 +50,7 @@ async fn site() -> Option<(Site, tokio::sync::MutexGuard<'static, ()>)> {
         .await
         .expect("ingest");
     store
-        .archive("9.0.0", "t_ver_v9_0_0")
+        .archive(Project::Engine, "9.0.0", "t_ver_v9_0_0")
         .await
         .expect("archive");
     store
@@ -191,4 +192,122 @@ async fn an_archive_cannot_be_written_through_the_api() {
         .await
         .expect("the router answers");
     assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+/// The engine's guide beside TessariKV's section, with a KV release 0.0.2 kept
+/// while it said "Old engine words" and an engine release 0.0.2 beside it.
+async fn products() -> Option<(Site, tokio::sync::MutexGuard<'static, ()>)> {
+    let address = std::env::var("DOCS_TEST_NODE").ok()?;
+    let alone = NODE.lock().await;
+    let site = Site::new(&address, "t_ver_prod", None);
+    let mut store = site.writer().await.expect("a connection");
+    store.migrate().await.expect("the schema applies");
+    let both = |kv: &str| {
+        let mut corpus = corpus("Guide words.");
+        corpus.sections.push(Section {
+            slug: "kv".to_owned(),
+            title: "TessariKV".to_owned(),
+            parent: None,
+            order: 66,
+            icon: None,
+        });
+        corpus.pages.push(
+            parse(
+                "kv/what-it-is",
+                &format!("+++\ntitle = \"What it is\"\n+++\n\n{kv}\n"),
+            )
+            .expect("a page"),
+        );
+        corpus
+    };
+    store
+        .ingest(&both("Old engine words."))
+        .await
+        .expect("ingest");
+    store
+        .archive(Project::Kv, "0.0.2", "t_ver_prod_kv_v0_0_2")
+        .await
+        .expect("archive kv");
+    store
+        .archive(Project::Engine, "0.0.2", "t_ver_prod_v0_0_2")
+        .await
+        .expect("archive the engine");
+    store
+        .ingest(&both("New engine words."))
+        .await
+        .expect("ingest");
+    Some((site, alone))
+}
+
+#[tokio::test]
+async fn each_product_lists_its_own_releases_and_reads_its_own_archive() {
+    let Some((site, _alone)) = products().await else {
+        eprintln!("skipped: DOCS_TEST_NODE is not set");
+        return;
+    };
+    let (status, body) = get(&site, "/api/versions?project=kv").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body, r#"[{"label":"0.0.2"}]"#);
+    let (status, body) = get(&site, "/api/versions?project=s3").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body, "[]", "another product lists nothing");
+
+    // The page's own path says which product's release to read.
+    let (status, body) = get(&site, "/api/v/0.0.2/page/kv/what-it-is").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("Old engine words."), "{body}");
+    let (status, body) = get(&site, "/api/v/0.0.2/page/guide/start").await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "the engine's 0.0.2 is its own: {body}"
+    );
+
+    let (status, body) = get(&site, "/api/nav?project=kv").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("kv/what-it-is"), "{body}");
+    assert!(
+        !body.contains("guide/start"),
+        "the engine's tree leaked: {body}"
+    );
+    let (status, body) = get(&site, "/api/nav").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("guide/start"), "{body}");
+    assert!(
+        !body.contains("kv/what-it-is"),
+        "a product leaked into the engine's tree: {body}"
+    );
+    let (status, body) = get(&site, "/api/v/0.0.2/nav?project=kv").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("kv/what-it-is"), "{body}");
+
+    let (status, body) = get(&site, "/api/search?q=words&project=kv").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("kv/what-it-is"), "{body}");
+    assert!(!body.contains("guide/start"), "{body}");
+    let (status, body) = get(&site, "/api/search?q=words").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("guide/start"), "{body}");
+    assert!(!body.contains("kv/what-it-is"), "{body}");
+    let (status, body) = get(&site, "/api/search?q=old&project=kv&v=0.0.2").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("kv/what-it-is"), "{body}");
+}
+
+#[tokio::test]
+async fn an_unknown_product_is_not_found_on_every_route_that_takes_one() {
+    let Some((site, _alone)) = products().await else {
+        eprintln!("skipped: DOCS_TEST_NODE is not set");
+        return;
+    };
+    for uri in [
+        "/api/versions?project=tessarikv",
+        "/api/nav?project=nope",
+        "/api/search?q=words&project=nope",
+        "/api/suggest?p=word&project=nope",
+        "/api/v/0.0.2/nav?project=s3",
+    ] {
+        let (status, body) = get(&site, uri).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}: {body}");
+    }
 }

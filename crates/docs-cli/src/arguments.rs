@@ -14,6 +14,8 @@
 
 use std::path::PathBuf;
 
+use docs_store::projects::Project;
+
 // The environment variables that supply the defaults, named once so that the
 // usage text below and the parser cannot drift apart.
 const NODE: &str = "TESSARIDB_ADDRESS";
@@ -63,6 +65,8 @@ pub struct Asked {
     pub release: Option<String>,
     /// `archive`: the namespace it is kept in. Derived from the label when absent.
     pub into: Option<String>,
+    /// `archive`: which product's section is kept; the engine when not named.
+    pub project: Project,
 }
 
 /// What to print when the command line does not parse, and for `--help`.
@@ -79,6 +83,8 @@ docs — the documentation site for TessariDB
   docs serve                     serve the API, seeding the store only if empty
   docs publish --to <url>        write content/ to a running site, over its API
   docs archive --as <version>    keep the site as it stands as that release
+  docs archive --project <p> --as <version>
+                                 keep one product's section as its release
 
 The store owns the content. content/ is where it is written and reviewed, and
 what an empty store is seeded from — but pages are also edited through the API,
@@ -96,7 +102,10 @@ Options
   --prune            publish: also remove pages the site has and content/ lacks
   --as <version>     archive: the release label, e.g. 0.32.0-beta
   --into <ns>        archive: the namespace to keep it in (default: v + the
-                     label with . and - as _, e.g. v0_32_0_beta)
+                     label with . and - as _, e.g. v0_32_0_beta; a product's
+                     is prefixed with its name, e.g. kv_v0_0_2)
+  --project <p>      archive: s3, am or kv keeps that product's section alone;
+                     db, or no flag, keeps the engine's pages
   --help             this
   --version          the version this was built from
 
@@ -182,7 +191,9 @@ pub fn read(words: &[String], environment: &dyn Fn(&str) -> Option<String>) -> R
         prune: false,
         release: None,
         into: None,
+        project: Project::Engine,
     };
+    let mut named_project = false;
 
     while let Some(word) = rest.next() {
         match word.as_str() {
@@ -205,6 +216,16 @@ pub fn read(words: &[String], environment: &dyn Fn(&str) -> Option<String>) -> R
             "--into" => match rest.next() {
                 Some(value) => asked.into = Some(value.clone()),
                 None => return missing("--into"),
+            },
+            "--project" => match rest.next().map(|value| Project::named(value)) {
+                Some(Some(project)) => {
+                    asked.project = project;
+                    named_project = true;
+                }
+                Some(None) => {
+                    return Read::Say(format!("--project is one of db, s3, am, kv\n\n{USAGE}"), 2);
+                }
+                None => return missing("--project"),
             },
             "--content" => match rest.next() {
                 Some(value) => asked.content = PathBuf::from(value),
@@ -240,8 +261,11 @@ pub fn read(words: &[String], environment: &dyn Fn(&str) -> Option<String>) -> R
     if task == Task::Archive && asked.release.is_none() {
         return Read::Say(format!("archive wants --as <version>\n\n{USAGE}"), 2);
     }
-    if task != Task::Archive && (asked.release.is_some() || asked.into.is_some()) {
-        return Read::Say("--as and --into belong to archive\n".to_owned(), 2);
+    if task != Task::Archive && (asked.release.is_some() || asked.into.is_some() || named_project) {
+        return Read::Say(
+            "--as, --into and --project belong to archive\n".to_owned(),
+            2,
+        );
     }
     Read::Do(Box::new(asked))
 }
@@ -368,6 +392,18 @@ mod tests {
         assert_eq!(held.into, None);
         let held = asked(&["archive", "--as", "1.0.0", "--into", "v1"]).expect("parses");
         assert_eq!(held.into.as_deref(), Some("v1"));
+    }
+
+    #[test]
+    fn archive_keeps_one_product_when_it_is_named_and_the_engine_otherwise() {
+        use docs_store::projects::Project;
+        let held = asked(&["archive", "--as", "0.0.2", "--project", "kv"]).expect("parses");
+        assert_eq!(held.project, Project::Kv);
+        let held = asked(&["archive", "--as", "0.35.3"]).expect("parses");
+        assert_eq!(held.project, Project::Engine);
+        assert!(asked(&["archive", "--as", "1.0.0", "--project", "tessarikv"]).is_err());
+        assert!(asked(&["archive", "--as", "1.0.0", "--project"]).is_err());
+        assert!(asked(&["publish", "--project", "kv"]).is_err());
     }
 
     #[test]

@@ -24,6 +24,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use docs_content::parse;
 use docs_store::ingest::Section;
+use docs_store::projects::Project;
 use docs_store::{Fault, Store};
 use serde::Deserialize;
 
@@ -66,6 +67,22 @@ pub struct Asked {
     /// box sends it this way, because its calls reach this route directly.
     #[serde(default)]
     v: String,
+    /// The product whose pages to search; absent is the engine.
+    #[serde(default)]
+    project: String,
+}
+
+/// Which product a listing is about: `?project=s3`. Absent is the engine.
+#[derive(Debug, Default, Deserialize)]
+pub struct Scope {
+    #[serde(default)]
+    project: String,
+}
+
+/// The project a request named, or the 404 every route answers an unknown one
+/// with — the same answer as an unknown release, for the same reason.
+fn project(named: &str) -> Result<Project, Box<Response>> {
+    Project::named(named).ok_or_else(|| Box::new(message(StatusCode::NOT_FOUND, "no such project")))
 }
 
 const fn twenty() -> u32 {
@@ -90,13 +107,17 @@ async fn health() -> &'static str {
 
 /// The archived releases, newest first — labels only. Where each one is kept
 /// is the store's business, and the label is the only address a reader needs.
-async fn versions(State(site): State<Site>) -> Response {
+async fn versions(State(site): State<Site>, Query(scope): Query<Scope>) -> Response {
     #[derive(serde::Serialize)]
     struct Listed {
         label: String,
     }
+    let project = match project(&scope.project) {
+        Ok(project) => project,
+        Err(refusal) => return *refusal,
+    };
     match site.reader().await {
-        Ok(mut store) => match store.versions().await {
+        Ok(mut store) => match store.versions(project).await {
             Ok(found) => json(
                 StatusCode::OK,
                 &found
@@ -116,10 +137,14 @@ async fn versions(State(site): State<Site>) -> Response {
 ///
 /// An unknown release is a 404 here, so every versioned route answers it the
 /// same way and none of them can forget to.
-async fn open(site: &Site, version: Option<&str>) -> Result<Store, Box<Response>> {
+async fn open(
+    site: &Site,
+    project: Project,
+    version: Option<&str>,
+) -> Result<Store, Box<Response>> {
     let opened = match version {
         None => site.reader().await.map(Some),
-        Some(label) => site.archived(label).await,
+        Some(label) => site.archived(project, label).await,
     };
     match opened {
         Ok(Some(store)) => Ok(store),
@@ -128,21 +153,31 @@ async fn open(site: &Site, version: Option<&str>) -> Result<Store, Box<Response>
     }
 }
 
-async fn nav(State(site): State<Site>) -> Response {
-    nav_in(&site, None).await
+async fn nav(State(site): State<Site>, Query(scope): Query<Scope>) -> Response {
+    nav_in(&site, &scope.project, None).await
 }
 
-async fn nav_at(State(site): State<Site>, Path(version): Path<String>) -> Response {
-    nav_in(&site, Some(&version)).await
+async fn nav_at(
+    State(site): State<Site>,
+    Path(version): Path<String>,
+    Query(scope): Query<Scope>,
+) -> Response {
+    nav_in(&site, &scope.project, Some(&version)).await
 }
 
-async fn nav_in(site: &Site, version: Option<&str>) -> Response {
-    let mut store = match open(site, version).await {
+/// The tree one project shows: its own part of the live site, or of one of
+/// its archived releases.
+async fn nav_in(site: &Site, named: &str, version: Option<&str>) -> Response {
+    let project = match project(named) {
+        Ok(project) => project,
+        Err(refusal) => return *refusal,
+    };
+    let mut store = match open(site, project, version).await {
         Ok(store) => store,
         Err(refusal) => return *refusal,
     };
     match store.tree().await {
-        Ok(tree) => json(StatusCode::OK, &tree),
+        Ok(tree) => json(StatusCode::OK, &project.narrow(tree)),
         Err(fault) => refused(&fault),
     }
 }
@@ -182,8 +217,10 @@ async fn page_at(
     page_in(&site, Some(&version), &slug).await
 }
 
+/// A page needs no `?project=`: the first step of its path says which
+/// product's release to look in.
 async fn page_in(site: &Site, version: Option<&str>, slug: &str) -> Response {
-    let mut store = match open(site, version).await {
+    let mut store = match open(site, Project::of(slug), version).await {
         Ok(store) => store,
         Err(refusal) => return *refusal,
     };
@@ -235,11 +272,15 @@ async fn search_at(
 }
 
 async fn search_in(site: &Site, version: Option<&str>, asked: &Asked) -> Response {
-    let mut store = match open(site, version).await {
+    let project = match project(&asked.project) {
+        Ok(project) => project,
+        Err(refusal) => return *refusal,
+    };
+    let mut store = match open(site, project, version).await {
         Ok(store) => store,
         Err(refusal) => return *refusal,
     };
-    match store.search(&asked.q, asked.limit).await {
+    match store.search_in(project, &asked.q, asked.limit).await {
         Ok(hits) => json(StatusCode::OK, &hits),
         Err(fault) => refused(&fault),
     }
@@ -254,11 +295,14 @@ pub struct Typed {
     /// The release, as on [`Asked`].
     #[serde(default)]
     v: String,
+    /// The product, as on [`Asked`].
+    #[serde(default)]
+    project: String,
 }
 
 /// Words the site holds that begin with what is being typed.
 async fn suggest(State(site): State<Site>, Query(typed): Query<Typed>) -> Response {
-    suggest_in(&site, release(&typed.v), &typed.p).await
+    suggest_in(&site, release(&typed.v), &typed).await
 }
 
 async fn suggest_at(
@@ -266,15 +310,22 @@ async fn suggest_at(
     Path(version): Path<String>,
     Query(typed): Query<Typed>,
 ) -> Response {
-    suggest_in(&site, Some(&version), &typed.p).await
+    suggest_in(&site, Some(&version), &typed).await
 }
 
-async fn suggest_in(site: &Site, version: Option<&str>, typed: &str) -> Response {
-    let mut store = match open(site, version).await {
+/// Words a release holds. The project chooses which product's archive is read;
+/// on the live site the words are the whole site's, because the term list is
+/// one index and a word is not a page.
+async fn suggest_in(site: &Site, version: Option<&str>, typed: &Typed) -> Response {
+    let project = match project(&typed.project) {
+        Ok(project) => project,
+        Err(refusal) => return *refusal,
+    };
+    let mut store = match open(site, project, version).await {
         Ok(store) => store,
         Err(refusal) => return *refusal,
     };
-    match store.suggest(typed, 6).await {
+    match store.suggest(&typed.p, 6).await {
         Ok(words) => json(StatusCode::OK, &words),
         Err(fault) => refused(&fault),
     }

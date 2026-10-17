@@ -29,11 +29,16 @@ use docs_content::front::FrontMatter;
 use tessaridb_client::Value;
 
 use crate::ingest::{Corpus, Section, Written, check};
+use crate::projects::Project;
 use crate::{Fault, Store, number_of, records, schema, text, text_of};
 
 /// One archived release.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Version {
+    /// Which product it is a release of. Not sent: a listing is asked for one
+    /// project, so every row of it is that project's.
+    #[serde(skip)]
+    pub project: Project,
     /// What a reader sees and what the URL carries: `0.32.0-beta`.
     pub label: String,
     /// Where its pages are. Not sent to a browser — the label is the address.
@@ -65,11 +70,15 @@ pub fn is_safe_namespace(namespace: &str) -> bool {
         })
 }
 
-/// The namespace a release is kept in when none is named: `0.32.0-beta` is
-/// kept in `v0_32_0_beta`.
+/// The namespace a release is kept in when none is named: the engine's
+/// `0.32.0-beta` is kept in `v0_32_0_beta`, TessariKV's `0.0.2` in `kv_v0_0_2`.
 #[must_use]
-pub fn namespace_for(label: &str) -> String {
-    let mut namespace = String::with_capacity(label.len().saturating_add(1));
+pub fn namespace_for(project: Project, label: &str) -> String {
+    let mut namespace = String::with_capacity(label.len().saturating_add(4));
+    if let Some(root) = project.root() {
+        namespace.push_str(root);
+        namespace.push('_');
+    }
     namespace.push('v');
     for character in label.chars() {
         namespace.push(match character {
@@ -112,21 +121,23 @@ fn split_label(label: &str) -> (Vec<u64>, Option<&str>) {
 }
 
 impl Store {
-    /// Every archived release, newest first.
+    /// Every archived release of one project, newest first.
+    ///
+    /// A release kept before products had sections of their own carries no
+    /// `project` and is the engine's, which is what it was.
     ///
     /// # Errors
     ///
     /// [`Fault::Client`] when the node refuses.
-    pub async fn versions(&mut self) -> Result<Vec<Version>, Fault> {
+    pub async fn versions(&mut self, project: Project) -> Result<Vec<Version>, Fault> {
         let answers = self.run("SELECT * FROM version;").await?;
         let mut versions: Vec<Version> = records(answers.first())?
             .iter()
-            .map(|(_, value)| Version {
-                label: text_of(value, "label"),
-                namespace: text_of(value, "namespace"),
-            })
+            .map(|(_, value)| version_of(value))
             .filter(|version| {
-                is_safe_label(&version.label) && is_safe_namespace(&version.namespace)
+                version.project == project
+                    && is_safe_label(&version.label)
+                    && is_safe_namespace(&version.namespace)
             })
             .collect();
         versions.sort_by(|left, right| precedence(&right.label, &left.label));
@@ -143,7 +154,11 @@ impl Store {
     ///
     /// [`Fault::Client`] when the node refuses, and [`Fault::UnsafeNamespace`]
     /// when the recorded namespace could not be selected safely.
-    pub async fn namespace_of(&mut self, label: &str) -> Result<Option<String>, Fault> {
+    pub async fn namespace_of(
+        &mut self,
+        project: Project,
+        label: &str,
+    ) -> Result<Option<String>, Fault> {
         if !is_safe_label(label) {
             return Ok(None);
         }
@@ -153,10 +168,16 @@ impl Store {
                 vec![("label".to_owned(), text(label))],
             )
             .await?;
-        let Some((_, value)) = records(answers.first())?.first() else {
+        // One label may name a release of several products, so the label
+        // narrows the read and the project picks the row.
+        let Some(version) = records(answers.first())?
+            .iter()
+            .map(|(_, value)| version_of(value))
+            .find(|version| version.project == project)
+        else {
             return Ok(None);
         };
-        let namespace = text_of(value, "namespace");
+        let namespace = version.namespace;
         if is_safe_namespace(&namespace) {
             Ok(Some(namespace))
         } else {
@@ -229,7 +250,11 @@ impl Store {
         Ok(Corpus { sections, pages })
     }
 
-    /// Keeps this namespace's site as release `label`, in namespace `into`.
+    /// Keeps one project's part of this namespace's site as release `label`,
+    /// in namespace `into`.
+    ///
+    /// A product's archive holds its own section and nothing else; the
+    /// engine's holds everything that is not a product's.
     ///
     /// The copy is read back and compared page by page before the release is
     /// listed, so a release that is listed is one that was kept whole.
@@ -244,7 +269,12 @@ impl Store {
     /// [`Fault::UnsafeVersion`] or [`Fault::UnsafeNamespace`] before anything is
     /// written, [`Fault::ArchiveDiffers`] when the copy read back differs, and
     /// [`Fault::Client`] when the node refuses.
-    pub async fn archive(&mut self, label: &str, into: &str) -> Result<Written, Fault> {
+    pub async fn archive(
+        &mut self,
+        project: Project,
+        label: &str,
+        into: &str,
+    ) -> Result<Written, Fault> {
         if !is_safe_label(label) {
             return Err(Fault::UnsafeVersion);
         }
@@ -252,7 +282,7 @@ impl Store {
             return Err(Fault::UnsafeNamespace(into.to_owned()));
         }
         let live = self.namespace().to_owned();
-        let corpus = self.corpus().await?;
+        let corpus = only(project, self.corpus().await?);
 
         let copied = self.fill(into, &corpus).await;
         self.switch(&live).await?;
@@ -265,13 +295,20 @@ impl Store {
         // Declared here as well as in the schema: a deployed API applies the
         // schema as an editor, which may be refused a definition, and this runs
         // as the store's owner.
+        // The engine's releases keep the id they always had; a product's is
+        // qualified by it, so one label can be a release of each.
+        let id = match project.root() {
+            None => label.to_owned(),
+            Some(root) => format!("{root}/{label}"),
+        };
         self.run_with(
             &format!(
-                "DEFINE COLLECTION IF NOT EXISTS version;\nDELETE version:'{label}';\nCREATE version:'{label}' = {{ label: $label, namespace: $namespace, archived_at: time::now() }};"
+                "DEFINE COLLECTION IF NOT EXISTS version;\nDELETE version:'{id}';\nCREATE version:'{id}' = {{ label: $label, namespace: $namespace, project: $project, archived_at: time::now() }};"
             ),
             vec![
                 ("label".to_owned(), text(label)),
                 ("namespace".to_owned(), text(into)),
+                ("project".to_owned(), text(project.slug())),
             ],
         )
         .await?;
@@ -292,6 +329,32 @@ impl Store {
         let written = self.ingest(corpus).await?;
         let kept = self.corpus().await?;
         Ok((written, kept))
+    }
+}
+
+/// One version record as written, with the engine standing in for a missing
+/// or unrecognised project — a release written before products existed.
+fn version_of(value: &Value) -> Version {
+    Version {
+        project: Project::named(&text_of(value, "project")).unwrap_or(Project::Engine),
+        label: text_of(value, "label"),
+        namespace: text_of(value, "namespace"),
+    }
+}
+
+/// The part of a corpus one project owns.
+fn only(project: Project, corpus: Corpus) -> Corpus {
+    Corpus {
+        sections: corpus
+            .sections
+            .into_iter()
+            .filter(|section| project.holds(&section.slug))
+            .collect(),
+        pages: corpus
+            .pages
+            .into_iter()
+            .filter(|page| project.holds(&page.slug))
+            .collect(),
     }
 }
 
@@ -385,9 +448,24 @@ mod tests {
 
     #[test]
     fn a_release_is_kept_in_a_namespace_named_after_it() {
-        assert_eq!(super::namespace_for("0.32.0-beta"), "v0_32_0_beta");
-        assert_eq!(super::namespace_for("1.0.0-RC.1"), "v1_0_0_rc_1");
-        assert!(is_safe_namespace(&super::namespace_for("0.32.0-beta")));
+        use crate::projects::Project;
+        assert_eq!(
+            super::namespace_for(Project::Engine, "0.32.0-beta"),
+            "v0_32_0_beta"
+        );
+        assert_eq!(
+            super::namespace_for(Project::Engine, "1.0.0-RC.1"),
+            "v1_0_0_rc_1"
+        );
+        assert_eq!(super::namespace_for(Project::Kv, "0.0.2"), "kv_v0_0_2");
+        assert_eq!(
+            super::namespace_for(Project::AgentMemory, "0.4.1-alpha"),
+            "am_v0_4_1_alpha"
+        );
+        assert!(is_safe_namespace(&super::namespace_for(
+            Project::S3,
+            "0.2.1"
+        )));
     }
 
     #[test]
