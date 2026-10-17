@@ -41,8 +41,10 @@ pub fn router(site: Site) -> Router {
             "/api/page/{*slug}",
             get(page).put(put_page).delete(delete_page),
         )
+        // A subsection's slug carries its parent's (`kv/engine`), so the section
+        // takes the rest of the path, as a page does.
         .route(
-            "/api/section/{slug}",
+            "/api/section/{*slug}",
             get(section).put(put_section).delete(delete_section),
         )
         .route("/api/versions", get(versions))

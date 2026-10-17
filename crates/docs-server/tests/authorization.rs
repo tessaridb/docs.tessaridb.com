@@ -118,6 +118,46 @@ async fn a_password_buys_a_token_and_the_token_buys_a_write() {
     assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
 }
 
+/// A subsection's slug carries its parent's, `guide/start`, so the section
+/// route has to take the whole rest of the path, as the page route does.
+#[tokio::test]
+async fn a_subsection_is_written_and_read_by_its_whole_slug() {
+    let Some((site, _alone)) = site("t_auth_subsection").await else {
+        return;
+    };
+    let (status, body) = send(&site, sign_in(Some(&basic("ann", PASSWORD)))).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let bearer = format!("Bearer {}", token_of(&body));
+
+    for (slug, section) in [
+        (
+            "guide",
+            r#"{"title":"Guide","parent":null,"order":10,"icon":null}"#,
+        ),
+        (
+            "guide/start",
+            r#"{"title":"Start here","parent":"guide","order":10,"icon":null}"#,
+        ),
+    ] {
+        let request = Request::builder()
+            .method("PUT")
+            .uri(format!("/api/section/{slug}"))
+            .header(header::AUTHORIZATION, &bearer)
+            .body(Body::from(section))
+            .expect("a request");
+        let (status, body) = send(&site, request).await;
+        assert!(status.is_success(), "{slug}: {status} {body}");
+    }
+
+    let request = Request::builder()
+        .uri("/api/section/guide/start")
+        .body(Body::empty())
+        .expect("a request");
+    let (status, body) = send(&site, request).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("Start here"), "{body}");
+}
+
 #[tokio::test]
 async fn the_token_is_a_day_long_and_is_not_what_the_store_holds() {
     let Some((site, _alone)) = site("t_auth_lifetime").await else {
