@@ -121,14 +121,9 @@ impl Store {
             ))
             .await?;
 
+        // A section's own pages first, then its subsections: a product's front
+        // page is read before its groups rather than after the last of them.
         let mut children = Vec::new();
-        let child_sections: Vec<String> = records(answers.first())?
-            .iter()
-            .map(|(_, value)| text_of(value, "slug"))
-            .collect();
-        for child in child_sections {
-            children.push(Box::pin(self.subtree(&child)).await?);
-        }
         for (_, value) in records(answers.get(1))? {
             children.push(Node {
                 slug: text_of(value, "slug"),
@@ -137,6 +132,13 @@ impl Store {
                 icon: None,
                 children: Vec::new(),
             });
+        }
+        let child_sections: Vec<String> = records(answers.first())?
+            .iter()
+            .map(|(_, value)| text_of(value, "slug"))
+            .collect();
+        for child in child_sections {
+            children.push(Box::pin(self.subtree(&child)).await?);
         }
 
         Ok(Node {

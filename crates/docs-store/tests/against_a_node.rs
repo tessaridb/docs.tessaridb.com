@@ -184,6 +184,11 @@ async fn the_tree_comes_back_through_the_graph_with_its_levels_intact() {
         pages,
         vec!["query-language/graphs", "query-language/search"]
     );
+
+    // A section's own pages come before its subsections, so a product's front
+    // page is read first rather than after its groups.
+    let kinds: Vec<&str> = root.children.iter().map(|node| node.kind).collect();
+    assert_eq!(kinds, vec!["page", "page", "section"]);
 }
 
 #[tokio::test]
