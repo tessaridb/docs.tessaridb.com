@@ -634,6 +634,14 @@ a:hover {
   color: var(--code-text);
 }
 
+/* An inline name — an environment variable, a path, a type — is one token with
+   no place to break, and on a phone it pushed the whole page sideways. In
+   running text it may break anywhere; in a table it keeps its line, because
+   the table scrolls inside itself. */
+.prose :is(p, li) > code {
+  overflow-wrap: anywhere;
+}
+
 .prose pre {
   margin: 1.3rem 0;
   padding: 0.95rem 1.1rem;
