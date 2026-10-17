@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import type { TreeNode } from "@/lib/api";
+import { pagePath } from "@/lib/projects";
 import { useNav } from "./Nav";
 import { Chevron, Close, named } from "./icons";
 
@@ -38,11 +39,11 @@ import { Chevron, Close, named } from "./icons";
  */
 export function Tree({
   nodes,
-  base,
+  archived,
   picker,
 }: {
   nodes: TreeNode[];
-  base: string;
+  archived: string | null;
   /** The release picker, shown at the top of the drawer on a narrow screen. */
   picker: React.ReactNode;
 }) {
@@ -55,11 +56,13 @@ export function Tree({
     setFolded(
       new Set(
         nodes
-          .filter((node) => node.kind !== "page" && !holds(node, here, base))
+          .filter(
+            (node) => node.kind !== "page" && !holds(node, here, archived),
+          )
           .map((node) => node.slug),
       ),
     );
-  }, [open, nodes, here, base]);
+  }, [open, nodes, here, archived]);
 
   function fold(slug: string) {
     setFolded((was) => {
@@ -95,7 +98,7 @@ export function Tree({
             depth={0}
             folded={folded}
             fold={fold}
-            base={base}
+            archived={archived}
           />
         ))}
       </ul>
@@ -104,9 +107,9 @@ export function Tree({
 }
 
 /** Whether this section, at any depth, contains the page being read. */
-function holds(node: TreeNode, here: string, base: string): boolean {
-  if (node.kind === "page") return `${base}/${node.slug}` === here;
-  return node.children.some((child) => holds(child, here, base));
+function holds(node: TreeNode, here: string, archived: string | null): boolean {
+  if (node.kind === "page") return pagePath(node.slug, archived) === here;
+  return node.children.some((child) => holds(child, here, archived));
 }
 
 function Branch({
@@ -114,18 +117,18 @@ function Branch({
   depth,
   folded,
   fold,
-  base,
+  archived,
 }: {
   node: TreeNode;
   depth: number;
   folded: ReadonlySet<string>;
   fold: (slug: string) => void;
-  base: string;
+  archived: string | null;
 }) {
   const here = usePathname();
 
   if (node.kind === "page") {
-    const href = `${base}/${node.slug}`;
+    const href = pagePath(node.slug, archived);
     return (
       <li>
         <Link href={href} aria-current={here === href ? "page" : undefined}>
@@ -161,7 +164,7 @@ function Branch({
             depth={depth + 1}
             folded={folded}
             fold={fold}
-            base={base}
+            archived={archived}
           />
         ))}
       </ul>

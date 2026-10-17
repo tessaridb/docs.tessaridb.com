@@ -87,6 +87,7 @@ async fn run(asked: &Asked) -> Result<(), String> {
         Task::Serve => serve(asked).await,
         Task::Publish => publish::publish(asked).await,
         Task::Archive => archive(asked).await,
+        Task::Rehome => rehome(asked).await,
     }
 }
 
@@ -97,10 +98,10 @@ async fn run(asked: &Asked) -> Result<(), String> {
 /// namespace. The store compares the copy with its source before listing it.
 async fn archive(asked: &Asked) -> Result<(), String> {
     let label = asked.release.as_deref().unwrap_or_default();
-    let into = asked
-        .into
-        .clone()
-        .unwrap_or_else(|| docs_store::versions::namespace_for(asked.project, label));
+    let mut into = docs_store::versions::place_for(asked.project, label);
+    if let Some(namespace) = &asked.into {
+        namespace.clone_into(&mut into.namespace);
+    }
     let mut store = open(asked).await?;
     let written = store
         .archive(asked.project, label, &into)
@@ -115,6 +116,22 @@ async fn archive(asked: &Asked) -> Result<(), String> {
         written.fragments,
         written.edges
     );
+    Ok(())
+}
+
+/// Moves every release kept a namespace of its own into its product's
+/// namespace, as a database. Runs as `DOCS_USER`, store-wide, for the reason
+/// `archive` does.
+async fn rehome(asked: &Asked) -> Result<(), String> {
+    let mut store = open(asked).await?;
+    let moved = store
+        .rehome()
+        .await
+        .map_err(|fault| format!("the move stopped: {fault}"))?;
+    for (label, from, into) in &moved {
+        println!("moved {label} from {from} to {into}; read back equal");
+    }
+    println!("{} releases moved", moved.len());
     Ok(())
 }
 

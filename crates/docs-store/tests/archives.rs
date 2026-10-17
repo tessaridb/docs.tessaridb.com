@@ -13,7 +13,16 @@
 
 use docs_content::parse;
 use docs_store::projects::Project;
+use docs_store::versions::Place;
 use docs_store::{Store, ingest::Corpus, ingest::Section};
+
+/// A namespace and a database in it — where a release is kept.
+fn at(namespace: &str, database: &str) -> Place {
+    Place {
+        namespace: namespace.to_owned(),
+        database: database.to_owned(),
+    }
+}
 
 /// One test at a time on the node, for the reason `against_a_node.rs` gives:
 /// each one declares namespaces and rewrites whole tables. A tokio mutex,
@@ -77,7 +86,7 @@ async fn an_archive_is_the_live_site_as_it_stood_and_stays_so() {
         .expect("ingest");
 
     let archived = store
-        .archive(Project::Engine, "9.9.0-test", "t_arch_v9_9_0")
+        .archive(Project::Engine, "9.9.0-test", &at("t_arch", "v9_9_0"))
         .await
         .expect("archive");
     assert_eq!(archived.pages, 3, "{archived:?}");
@@ -89,14 +98,14 @@ async fn an_archive_is_the_live_site_as_it_stood_and_stays_so() {
         .await
         .expect("ingest again");
 
-    let namespace = store
-        .namespace_of(Project::Engine, "9.9.0-test")
+    let place = store
+        .place_of(Project::Engine, "9.9.0-test")
         .await
         .expect("a read")
         .expect("the label is recorded");
-    assert_eq!(namespace, "t_arch_v9_9_0");
+    assert_eq!(place, at("t_arch", "v9_9_0"));
 
-    store.switch(&namespace).await.expect("switch");
+    store.switch(&place).await.expect("switch");
     let old = store
         .article("query-language/search")
         .await
@@ -155,12 +164,12 @@ async fn archiving_a_label_again_replaces_it_rather_than_doubling_it() {
     };
     store.ingest(&corpus("First.")).await.expect("ingest");
     store
-        .archive(Project::Engine, "9.8.0", "t_arch_v9_8_0")
+        .archive(Project::Engine, "9.8.0", &at("t_arch", "v9_8_0"))
         .await
         .expect("archive");
     store.ingest(&corpus("Second.")).await.expect("ingest");
     let again = store
-        .archive(Project::Engine, "9.8.0", "t_arch_v9_8_0")
+        .archive(Project::Engine, "9.8.0", &at("t_arch", "v9_8_0"))
         .await
         .expect("archive again");
     assert_eq!(again.pages, 3, "{again:?}");
@@ -174,7 +183,7 @@ async fn archiving_a_label_again_replaces_it_rather_than_doubling_it() {
         1,
         "{versions:?}"
     );
-    store.switch("t_arch_v9_8_0").await.expect("switch");
+    store.switch(&at("t_arch", "v9_8_0")).await.expect("switch");
     assert_eq!(store.pages_held().await.expect("count"), 3);
     let page = store
         .article("query-language/search")
@@ -192,15 +201,19 @@ async fn versions_come_back_newest_first_and_an_unknown_label_is_none() {
     };
     store.ingest(&corpus("Any.")).await.expect("ingest");
     store
-        .archive(Project::Engine, "0.9.0-beta", "t_arch_v0_9_0_beta")
+        .archive(Project::Engine, "0.9.0-beta", &at("t_arch", "v0_9_0_beta"))
         .await
         .expect("archive");
     store
-        .archive(Project::Engine, "0.10.0-beta", "t_arch_v0_10_0_beta")
+        .archive(
+            Project::Engine,
+            "0.10.0-beta",
+            &at("t_arch", "v0_10_0_beta"),
+        )
         .await
         .expect("archive");
     store
-        .archive(Project::Engine, "0.10.0", "t_arch_v0_10_0")
+        .archive(Project::Engine, "0.10.0", &at("t_arch", "v0_10_0"))
         .await
         .expect("archive");
 
@@ -215,14 +228,14 @@ async fn versions_come_back_newest_first_and_an_unknown_label_is_none() {
 
     assert!(
         store
-            .namespace_of(Project::Engine, "1.2.3")
+            .place_of(Project::Engine, "1.2.3")
             .await
             .expect("a read")
             .is_none()
     );
     assert!(
         store
-            .namespace_of(Project::Engine, "x' OR true --")
+            .place_of(Project::Engine, "x' OR true --")
             .await
             .expect("a read")
             .is_none(),
@@ -239,19 +252,19 @@ async fn an_archive_into_an_unusable_namespace_is_refused_before_anything_is_wri
     store.ingest(&corpus("Any.")).await.expect("ingest");
     assert!(
         store
-            .archive(Project::Engine, "1.0.0", "x; DROP")
+            .archive(Project::Engine, "1.0.0", &at("x; DROP", "v1_0_0"))
             .await
             .is_err()
     );
     assert!(
         store
-            .archive(Project::Engine, "1.0.0'", "t_arch_ok")
+            .archive(Project::Engine, "1.0.0'", &at("t_arch", "ok"))
             .await
             .is_err()
     );
     assert!(
         store
-            .archive(Project::Engine, "1.0.0", "t_arch_refuse")
+            .archive(Project::Engine, "1.0.0", &at("t_arch_refuse", "docs"))
             .await
             .is_err(),
         "into itself"
@@ -266,7 +279,7 @@ async fn an_archive_into_an_unusable_namespace_is_refused_before_anything_is_wri
 
     // Refused BEFORE anything was written: the store would refuse the bad label
     // too, but only after the pages had been copied.
-    let filled = match store.switch("t_arch_ok").await {
+    let filled = match store.switch(&at("t_arch", "ok")).await {
         Ok(()) => store.pages_held().await.unwrap_or(0),
         Err(_) => 0,
     };
@@ -313,7 +326,7 @@ async fn a_product_is_archived_alone_and_listed_only_for_itself() {
         .expect("ingest");
 
     let kept = store
-        .archive(Project::Kv, "0.0.2", "t_arch_proj_kv_v0_0_2")
+        .archive(Project::Kv, "0.0.2", &at("t_arch_proj_kv", "v0_0_2"))
         .await
         .expect("archive the product");
     assert_eq!(kept.pages, 2, "only the product's pages: {kept:?}");
@@ -321,7 +334,7 @@ async fn a_product_is_archived_alone_and_listed_only_for_itself() {
 
     // The same label for the engine is a different release in another place.
     let engine = store
-        .archive(Project::Engine, "0.0.2", "t_arch_proj_v0_0_2")
+        .archive(Project::Engine, "0.0.2", &at("t_arch_proj_db", "v0_0_2"))
         .await
         .expect("archive the engine");
     assert_eq!(
@@ -346,24 +359,22 @@ async fn a_product_is_archived_alone_and_listed_only_for_itself() {
         "another product lists nothing"
     );
     assert_eq!(
-        store
-            .namespace_of(Project::Kv, "0.0.2")
-            .await
-            .expect("a read")
-            .as_deref(),
-        Some("t_arch_proj_kv_v0_0_2")
+        store.place_of(Project::Kv, "0.0.2").await.expect("a read"),
+        Some(at("t_arch_proj_kv", "v0_0_2"))
     );
     assert_eq!(
         store
-            .namespace_of(Project::Engine, "0.0.2")
+            .place_of(Project::Engine, "0.0.2")
             .await
-            .expect("a read")
-            .as_deref(),
-        Some("t_arch_proj_v0_0_2"),
+            .expect("a read"),
+        Some(at("t_arch_proj_db", "v0_0_2")),
         "one label, two products, two places"
     );
 
-    store.switch("t_arch_proj_kv_v0_0_2").await.expect("switch");
+    store
+        .switch(&at("t_arch_proj_kv", "v0_0_2"))
+        .await
+        .expect("switch");
     let tree = Project::Kv.narrow(store.tree().await.expect("the tree"));
     assert!(
         slugs_contains(&tree, "kv/what-it-is") && slugs_contains(&tree, "kv/index"),
@@ -428,5 +439,113 @@ async fn a_search_inside_a_product_answers_only_with_its_pages() {
     assert!(
         typed.iter().all(|hit| hit.page.starts_with("kv/")),
         "{typed:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_release_kept_a_namespace_each_moves_into_its_product_and_reads_the_same() {
+    let Some((mut store, _alone)) = live("t_arch_rehome").await else {
+        eprintln!("skipped: DOCS_TEST_NODE is not set");
+        return;
+    };
+    store
+        .ingest(&shared_corpus("as it was then."))
+        .await
+        .expect("ingest");
+    // Kept the old way: a namespace of its own, the `docs` database inside.
+    store
+        .archive(
+            Project::Engine,
+            "9.7.0-rehome",
+            &at("t_arch_rehome_v9_7_0", "docs"),
+        )
+        .await
+        .expect("archive the old way");
+    store
+        .archive(
+            Project::Kv,
+            "9.7.0-rehome",
+            &at("t_arch_rehome_kv_v9_7_0", "docs"),
+        )
+        .await
+        .expect("archive the old way");
+    store
+        .ingest(&shared_corpus("as it is now."))
+        .await
+        .expect("the live site moves on");
+
+    let moved = store.rehome().await.expect("rehome");
+    let mut places: Vec<String> = moved
+        .iter()
+        .map(|(label, from, into)| format!("{label} {from} {into}"))
+        .collect();
+    places.sort();
+    assert_eq!(
+        places,
+        [
+            "9.7.0-rehome t_arch_rehome_kv_v9_7_0.docs kv.v9_7_0_rehome",
+            "9.7.0-rehome t_arch_rehome_v9_7_0.docs db.v9_7_0_rehome",
+        ]
+    );
+    assert_eq!(
+        store
+            .place_of(Project::Kv, "9.7.0-rehome")
+            .await
+            .expect("a read"),
+        Some(at("kv", "v9_7_0_rehome"))
+    );
+
+    // The moved release is the release as it was, not the live site.
+    let place = store
+        .place_of(Project::Engine, "9.7.0-rehome")
+        .await
+        .expect("a read")
+        .expect("listed");
+    assert_eq!(place, at("db", "v9_7_0_rehome"));
+    store.switch(&place).await.expect("switch");
+    let page = store
+        .article("query-language/search")
+        .await
+        .expect("a read")
+        .expect("the moved page");
+    assert!(
+        page.markdown.contains("as it was then."),
+        "{}",
+        page.markdown
+    );
+    assert!(
+        store
+            .search("then", 10)
+            .await
+            .expect("search")
+            .iter()
+            .any(|hit| hit.page == "query-language/search"),
+        "the moved release answers from its own index"
+    );
+    assert!(
+        store.article("kv/index").await.expect("a read").is_none(),
+        "the engine's release holds no product pages"
+    );
+
+    // The old place is left as it was, for the owner to drop.
+    store
+        .switch(&at("t_arch_rehome_v9_7_0", "docs"))
+        .await
+        .expect("the old namespace is still there");
+    assert!(
+        store
+            .article("query-language/search")
+            .await
+            .expect("a read")
+            .is_some()
+    );
+
+    store
+        .switch(&at("t_arch_rehome", "docs"))
+        .await
+        .expect("back to the live site");
+    assert!(
+        store.rehome().await.expect("rehome again").is_empty(),
+        "a second run moves nothing"
     );
 }

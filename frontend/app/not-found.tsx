@@ -7,7 +7,7 @@ import { Shell } from "@/components/Shell";
  */
 export default function NotFound() {
   return (
-    <Shell archived={null}>
+    <Shell project="db" archived={null}>
       <Missing home="/" />
     </Shell>
   );

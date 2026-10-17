@@ -16,22 +16,6 @@ export const origin = (process.env.DOCS_ORIGIN ?? "https://docs.tessaridb.com").
   "",
 );
 
-/** The product site next door. */
-export const product = "https://tessaridb.com";
-
-/**
- * The engine version this site documents.
- *
- * Here rather than written into the header and the footer, which is where it was
- * and where it drifted: both said `0.0.1-alpha` for a week after the engine had
- * moved on, and neither is a place anybody looks when the version changes.
- *
- * It is **not** derived from `DOCS_NAMESPACE`. That value — `v0_0_3_alpha` —
- * looks like this one and is not: it names the store's namespace, so changing it
- * moves the site's content to a new namespace rather than relabelling anything.
- */
-export const version = "0.35.3";
-
 /** What this site is, in one sentence, wherever one is needed. */
 export const tagline =
   "The documentation for TessariDB — the stack around the model, in one store: eleven engines under one language and one transaction.";

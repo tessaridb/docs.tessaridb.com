@@ -13,6 +13,7 @@ use docs_content::parse;
 use docs_server::Site;
 use docs_store::ingest::{Corpus, Section};
 use docs_store::projects::Project;
+use docs_store::versions::place_for;
 use tower::ServiceExt;
 
 static NODE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -50,7 +51,11 @@ async fn site() -> Option<(Site, tokio::sync::MutexGuard<'static, ()>)> {
         .await
         .expect("ingest");
     store
-        .archive(Project::Engine, "9.0.0", "t_ver_v9_0_0")
+        .archive(
+            Project::Engine,
+            "9.0.0",
+            &place_for(Project::Engine, "9.0.0"),
+        )
         .await
         .expect("archive");
     store
@@ -225,11 +230,15 @@ async fn products() -> Option<(Site, tokio::sync::MutexGuard<'static, ()>)> {
         .await
         .expect("ingest");
     store
-        .archive(Project::Kv, "0.0.2", "t_ver_prod_kv_v0_0_2")
+        .archive(Project::Kv, "0.0.2", &place_for(Project::Kv, "0.0.2"))
         .await
         .expect("archive kv");
     store
-        .archive(Project::Engine, "0.0.2", "t_ver_prod_v0_0_2")
+        .archive(
+            Project::Engine,
+            "0.0.2",
+            &place_for(Project::Engine, "0.0.2"),
+        )
         .await
         .expect("archive the engine");
     store

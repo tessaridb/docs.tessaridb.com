@@ -36,7 +36,8 @@ about the engine than any benchmark table.
 | **Content** | records in TessariDB, written through the API. Not in this repository |
 | **Search** | TessariDB `DEFINE SEARCH`: title, heading and passage weighted as one document (BM25F), the store's snippet window, type-ahead from `COMPLETE` |
 | **Navigation** | the section tree is a graph in the store, walked with `RELATE` edges |
-| **Versions** | each release kept in a namespace of its own and served under `/v/<version>/` with its own tree and search index; the newest is the live site at the plain URLs |
+| **Products** | TessariDB at the plain URLs; TessariDB S3, Agent Memory and TessariKV each under its own section — `/s3`, `/am`, `/kv` — with its own tree, search and releases, and a switcher between them |
+| **Versions** | each product's releases kept as databases in that product's namespace (`db`, `s3`, `am`, `kv`) and served under its own `/v/<version>/` — `/v/0.34.0/…` for the engine, `/kv/v/0.0.1/…` for TessariKV — each with its own tree and search index; the newest is the live site |
 | **Front end** | Next.js, server-rendered per request. It holds no content and never talks to the store |
 | **Deploy** | three containers — database, API, front end — and a folder on the host |
 
@@ -107,15 +108,23 @@ At each release, once its pages are published, the live site is kept as that
 release:
 
 ```sh
-docs archive --as 0.32.0-beta   # copy, compare page by page, list it
+docs archive --as 0.32.0-beta                # the engine's pages
+docs archive --project kv --as 0.0.2         # one product's section alone
 ```
 
-It copies the live namespace into one of its own (`v0_32_0_beta`), reads the
-copy back and compares every page and section with what it was copied from, and
-only then lists the release. The site's version picker offers every listed
-release at `/v/<version>/`, and the header search, its suggestions and the
-results page search the release being read. Archiving a version again replaces
-what it held. It runs as a store-wide user, because it declares a namespace.
+It copies the product's part of the live site into a database of its own in
+the product's namespace (`db.v0_32_0_beta`, `kv.v0_0_2`), reads the copy back
+and compares every page and section with what it was copied from, and only then
+lists the release. Each product's version picker offers its own releases — at
+`/v/<version>/` for the engine and `/<product>/v/<version>/` for a product — and
+the header search, its suggestions and the results page search the release
+being read. Archiving a version again replaces what it held. It runs as a
+store-wide user, because it may declare a namespace.
+
+Releases kept before this layout — a namespace each, `v0_32_0_beta.docs` — are
+moved with `docs rehome`, which copies each into its product's namespace,
+compares it page by page, and points its row there. The old namespace is left
+in place to be dropped once the moved releases have been read on the site.
 
 `serve` seeds from such a tree only when the store is **empty** and one happens
 to be there. It never rebuilds a populated store, because pages are edited

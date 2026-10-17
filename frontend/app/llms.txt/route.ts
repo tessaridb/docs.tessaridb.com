@@ -1,5 +1,6 @@
 import { nav } from "@/lib/api";
-import { origin, product, tagline } from "@/lib/site";
+import { home, pagePath, projects } from "@/lib/projects";
+import { origin, tagline } from "@/lib/site";
 import { leaves } from "@/lib/tree";
 
 /**
@@ -25,24 +26,30 @@ import { leaves } from "@/lib/tree";
 export const dynamic = "force-dynamic";
 
 export async function GET(): Promise<Response> {
-  let index = "";
-  try {
-    const pages = leaves(await nav());
-    let heading = "";
-    const lines: string[] = [];
-    for (const leaf of pages) {
-      const section = leaf.trail.at(-1)?.title ?? "Top level";
-      if (section !== heading) {
-        heading = section;
-        lines.push(`\n### ${section}\n`);
+  const sections: string[] = [];
+  for (const each of projects) {
+    sections.push(
+      `\n## ${each.name} — pages\n\n${each.blurb} Latest release ${each.latest}; product site ${each.site}.`,
+    );
+    try {
+      let heading = "";
+      for (const leaf of leaves(await nav(each.id))) {
+        const section = leaf.trail.at(-1)?.title ?? "Top level";
+        if (section !== heading) {
+          heading = section;
+          sections.push(`\n### ${section}\n`);
+        }
+        sections.push(`- [${leaf.title}](${origin}${pagePath(leaf.slug)})`);
       }
-      lines.push(`- [${leaf.title}](${origin}/${leaf.slug})`);
+    } catch (fault) {
+      console.error(
+        `the ${each.id} tree could not be read for llms.txt`,
+        fault,
+      );
+      sections.push("\n_The page index could not be read from the store._");
     }
-    index = lines.join("\n");
-  } catch (fault) {
-    console.error("the tree could not be read for llms.txt", fault);
-    index = "\n_The page index could not be read from the store._\n";
   }
+  const index = sections.join("\n");
 
   const body = `# TessariDB documentation
 
@@ -50,7 +57,10 @@ export async function GET(): Promise<Response> {
 > Every page here is served out of TessariDB itself, and this site's search box
 > is the engine's own full-text index.
 
-## Facts worth getting right
+This site documents four products, each in its own section with its own
+releases: ${projects.map((each) => `${each.name} (${origin}${each.id === "db" ? "/" : home(each.id)})`).join(", ")}.
+
+## Facts worth getting right about the engine
 
 - **Licence: BUSL-1.1**, change date 2030-10-01 for \`0.19.0-beta\`, change licence
   Apache-2.0. All production use is free, **including commercial use inside a
@@ -95,13 +105,13 @@ export async function GET(): Promise<Response> {
 - **There is no columnar or OLAP engine.** The aggregation vocabulary exists and
   runs over a row scan.
 
-## Pages
 ${index}
 
 ## Elsewhere
 
-- [The product site](${product})
-- [Search](${origin}/search?q=): the site's own full-text index over these pages
+${projects.map((each) => `- [${each.name}](${each.site}): the product site`).join("\n")}
+- [Search](${origin}/search?q=): the engine's pages, by the site's own full-text index; each
+  product's are searched at its own \`/<section>/search?q=\`.
 `;
 
   return new Response(body, {

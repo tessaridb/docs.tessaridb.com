@@ -14,6 +14,12 @@
   --brand-bright: #7f77dd;
   --brand-soft: rgba(127, 119, 221, 0.12);
 
+  /* Each product's own accent, from its own site's palette — the badge on its
+     mark and nothing else, so the violet stays this site's one accent. */
+  --project-s3: oklch(0.7 0.12 190);
+  --project-am: oklch(0.66 0.11 245);
+  --project-kv: oklch(0.66 0.13 355);
+
   --bg: #ffffff;
   --bg-raised: #fafafc;
   --bg-sunken: #f4f4f8;
@@ -46,6 +52,10 @@
   --brand: #9a93e8;
   --brand-bright: #7f77dd;
   --brand-soft: rgba(127, 119, 221, 0.18);
+
+  --project-s3: oklch(0.79 0.12 190);
+  --project-am: oklch(0.76 0.11 245);
+  --project-kv: oklch(0.75 0.13 355);
 
   --bg: #0d0d13;
   --bg-raised: #14141d;
@@ -146,7 +156,8 @@ a:hover {
 /* The release picker. Closed, it reads like the version badge it replaced — a
    pill with the release in it; open, it is a short list anchored under it,
    growing from its own corner so it reads as coming out of the pill. */
-.releases {
+.releases,
+.projects {
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   position: relative;
 }
@@ -204,7 +215,8 @@ a:hover {
   border-radius: 999px;
   padding: 0 0.35rem;
 }
-.releases-list {
+.releases-list,
+.projects-list {
   position: absolute;
   top: calc(100% + 0.45rem);
   left: 0;
@@ -228,10 +240,12 @@ a:hover {
     transform 200ms var(--ease-out),
     visibility 0s linear 200ms;
 }
-.releases-list:focus {
+.releases-list:focus,
+.projects-list:focus {
   outline: none;
 }
-.releases[data-open] .releases-list {
+.releases[data-open] .releases-list,
+.projects[data-open] .projects-list {
   visibility: visible;
   opacity: 1;
   transform: none;
@@ -242,7 +256,9 @@ a:hover {
 }
 /* Opened from the keyboard, or with motion reduced: there at once. */
 .releases-list[data-instant],
-.releases[data-open] .releases-list[data-instant] {
+.releases[data-open] .releases-list[data-instant],
+.projects-list[data-instant],
+.projects[data-open] .projects-list[data-instant] {
   transition: none;
 }
 .releases-option {
@@ -275,15 +291,118 @@ a:hover {
 .releases-label {
   flex: 1;
 }
+/* The product switcher: the header's first control, the product's mark and
+   name. It reads as the brand it replaced — no pill, no border — and shows it
+   is a control only by its chevron and on hover. Its list is the release
+   list's, wider, because each row carries a line saying what the product is. */
+.projects-button {
+  font: inherit;
+  font-size: 1rem;
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+  padding: 0.3rem 0.45rem;
+  margin-left: -0.45rem;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    transform 160ms var(--ease-out);
+}
+.projects-button > svg:last-child {
+  color: var(--text-faint);
+  transform: rotate(90deg);
+  transition: transform 180ms var(--ease-out);
+}
+.projects[data-open] .projects-button > svg:last-child {
+  transform: rotate(-90deg);
+}
+.projects[data-open] .projects-button {
+  background: var(--bg-sunken);
+}
+.projects-button:active {
+  transform: scale(0.97);
+}
+.projects-button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .projects-button:hover {
+    background: var(--bg-sunken);
+  }
+}
+.projects-list {
+  width: 21rem;
+  max-width: calc(100vw - 2rem);
+}
+.projects-option {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.6rem;
+  border-radius: calc(var(--radius) - 3px);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.projects-option > svg {
+  flex: none;
+}
+.projects-option[data-active] {
+  background: var(--brand-soft);
+  color: var(--text);
+}
+.projects-option:active {
+  transform: scale(0.98);
+}
+.projects-text {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.projects-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.5rem;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.projects-version {
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-faint);
+}
+.projects-blurb {
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.projects-check {
+  display: inline-flex;
+  width: 14px;
+  flex: none;
+  color: var(--brand);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .releases-button,
   .releases-button svg,
   .releases-list,
-  .releases[data-open] .releases-list {
+  .releases[data-open] .releases-list,
+  .projects-button,
+  .projects-button > svg:last-child,
+  .projects-list,
+  .projects[data-open] .projects-list {
     transition: none;
   }
   .releases-button:active,
-  .releases-option:active {
+  .releases-option:active,
+  .projects-button:active,
+  .projects-option:active {
     transform: none;
   }
 }
@@ -1055,9 +1174,12 @@ a:hover {
 }
 .footer-grid {
   display: grid;
-  /* The about column earns twice the width; the three link columns share the
-     rest and collapse together rather than one at a time. */
-  grid-template-columns: 2fr 1fr 1fr 1fr;
+  /* The about column earns twice the width; the link columns — three for a
+     product, four for the engine — share the rest and collapse together rather
+     than one at a time. */
+  grid-template-columns: 2fr;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
   gap: 2.5rem;
   max-width: 90rem;
   margin: 0 auto;
@@ -1222,6 +1344,12 @@ a:hover {
   .header-what .releases {
     display: none;
   }
+  /* The product switcher names the product in words where the bare mark used
+     to stand, so the header's gaps close up to keep the row inside the screen. */
+  .header {
+    gap: 0.6rem;
+    padding: 0 1rem;
+  }
   /* The search page is the page here, so it gets the width the article had. */
   .searchpage {
     padding-top: 1.5rem;
@@ -1238,7 +1366,16 @@ a:hover {
      place at the top, so the footer opens with what the site is. */
   .footer-grid {
     grid-template-columns: minmax(0, 1fr);
+    grid-auto-flow: row;
     gap: 2rem;
     padding: 2.5rem 1.25rem 1.5rem;
+  }
+}
+
+/* Below 400px even the closed-up row is wider than the screen; the product's
+   name says what is being read, and "Docs" is the part that can go. */
+@media (max-width: 400px) {
+  .header-what {
+    display: none;
   }
 }

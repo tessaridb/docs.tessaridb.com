@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { suggest } from "@/lib/api";
+import { isProjectId } from "@/lib/projects";
 import { release } from "@/lib/version";
 
 /**
@@ -18,9 +19,11 @@ export async function GET(request: Request) {
   if (typed.trim().length < 3) return NextResponse.json([]);
   const archived = release(params.get("v"));
   if (archived === undefined) return NextResponse.json([]);
+  const project = params.get("project") ?? "db";
+  if (!isProjectId(project)) return NextResponse.json([]);
 
   try {
-    return NextResponse.json(await suggest(typed.trim(), archived));
+    return NextResponse.json(await suggest(typed.trim(), archived, project));
   } catch (fault) {
     // No suggestions rather than an error: the box still searches without them.
     console.error("suggest failed", fault);

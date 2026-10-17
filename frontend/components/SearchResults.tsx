@@ -3,6 +3,7 @@ import Link from "next/link";
 import { SearchAgain } from "@/components/SearchAgain";
 import { type Hit, search } from "@/lib/api";
 import { excerpt } from "@/lib/excerpt";
+import { type ProjectId, pagePath, startOf } from "@/lib/projects";
 
 /**
  * A whole page of results, for the live site or for one archived release.
@@ -25,17 +26,18 @@ import { excerpt } from "@/lib/excerpt";
 export async function SearchResults({
   asked,
   archived,
-  base,
+  project,
 }: {
   asked: string;
   archived: string | null;
-  base: string;
+  project: ProjectId;
 }) {
+  const start = startOf(project, archived);
   let hits: Hit[] = [];
   let broke = false;
   if (asked.length >= 2) {
     try {
-      hits = await search(asked, 60, archived);
+      hits = await search(asked, 60, archived, project);
     } catch {
       broke = true;
     }
@@ -44,7 +46,7 @@ export async function SearchResults({
   return (
     <div className="searchpage">
       <h1>Search</h1>
-      <SearchAgain initial={asked} base={base} />
+      <SearchAgain initial={asked} searchAt={`${start}/search`} />
 
       {asked.length < 2 ? (
         <p className="searchpage-note">
@@ -54,9 +56,17 @@ export async function SearchResults({
         </p>
       ) : broke ? (
         <p className="searchpage-note">
-          The index could not be reached. The pages are still where they were —
-          the <Link href={`${base}/reference/statements`}>reference</Link> lists the
-          language in full.
+          The index could not be reached. The pages are still where they were —{" "}
+          {project === "db" ? (
+            <>
+              the <Link href={`${start}/reference/statements`}>reference</Link>{" "}
+              lists the language in full.
+            </>
+          ) : (
+            <>
+              start from <Link href={start}>the front page</Link>.
+            </>
+          )}
         </p>
       ) : hits.length === 0 ? (
         <p className="searchpage-note">
@@ -76,8 +86,8 @@ export async function SearchResults({
                 <Link
                   href={
                     hit.anchor
-                      ? `${base}/${hit.page}#${hit.anchor}`
-                      : `${base}/${hit.page}`
+                      ? `${pagePath(hit.page, archived)}#${hit.anchor}`
+                      : pagePath(hit.page, archived)
                   }
                 >
                   <span className="searchpage-where">{hit.page}</span>

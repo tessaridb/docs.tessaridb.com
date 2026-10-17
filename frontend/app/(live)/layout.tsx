@@ -1,6 +1,5 @@
-import { Shell } from "@/components/Shell";
+import { LiveLayout } from "@/app/_routes/layouts";
 
-/** The live site: the newest release, at the URLs it has always had. */
-export default function Live({ children }: { children: React.ReactNode }) {
-  return <Shell archived={null}>{children}</Shell>;
+export default function Engine({ children }: { children: React.ReactNode }) {
+  return <LiveLayout id="db">{children}</LiveLayout>;
 }

@@ -131,7 +131,7 @@ impl Site {
     /// `None` when no release of it carries `label`.
     ///
     /// One connection: it signs in against the live namespace, finds the label
-    /// in the list kept there, and moves to the release's namespace. The reading
+    /// in the list kept there, and moves to the release's database. The reading
     /// account must therefore reach every namespace — a store-wide `viewer`.
     ///
     /// # Errors
@@ -139,9 +139,9 @@ impl Site {
     /// [`Fault::Client`] when the node is unreachable or refuses.
     pub async fn archived(&self, project: Project, label: &str) -> Result<Option<Store>, Fault> {
         let mut store = self.reader().await?;
-        match store.namespace_of(project, label).await? {
-            Some(namespace) => {
-                store.switch(&namespace).await?;
+        match store.place_of(project, label).await? {
+            Some(place) => {
+                store.switch(&place).await?;
                 Ok(Some(store))
             }
             None => Ok(None),

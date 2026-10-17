@@ -6,6 +6,15 @@
  * of its own — its pages, its tree and its search index.
  */
 
+import {
+  type ProjectId,
+  projectOf,
+  projects,
+  releaseOf,
+  root,
+  startOf,
+} from "./projects.ts";
+
 /**
  * Whether a label can name a release: a version string and nothing else.
  *
@@ -16,33 +25,43 @@ export function isLabel(label: string): boolean {
   return /^[0-9][0-9A-Za-z.-]{0,39}$/.test(label);
 }
 
-/** Where a release's pages start: `""` for the live site, `/v/<label>` otherwise. */
-export function basePath(archived: string | null): string {
-  return archived === null ? "" : `/v/${archived}`;
-}
-
 /**
- * The page's HTML with its site-internal links pointed into the release.
+ * The page's HTML with its own project's site-internal links pointed into the
+ * release.
  *
  * A page links to `/query-language/records`; read in an archived release, that
  * link must stay in the release rather than jump to the live site. Only an
  * `href` that starts with one `/` is rewritten — a protocol-relative `//host`
  * and every absolute URL are left alone, and so are in-page `#anchors`.
+ *
+ * A release belongs to one project, so only that project's links move: an
+ * archived TessariKV page linking to the engine's `/query-language/records`
+ * keeps the live link, because the engine never had a release called `0.0.1`.
  */
-export function withinRelease(html: string, base: string): string {
-  if (base === "") return html;
-  return html.replace(/href="\/(?!\/)/g, `href="${base}/`);
+export function withinRelease(
+  html: string,
+  id: ProjectId,
+  archived: string | null,
+): string {
+  if (archived === null) return html;
+  const at = root(id);
+  const products = projects.flatMap((each) => root(each.id) ?? []).join("|");
+  const ours =
+    at === null
+      ? new RegExp(`href="(?=/(?!/)(?!(?:${products})(?:[/"#?])))`, "g")
+      : new RegExp(`href="/${at}(?=[/"#?])`, "g");
+  return html.replace(ours, `href="${startOf(id, archived)}`);
 }
 
 /**
- * The same page in another release: `/v/0.31.0-beta/x` → `/x` for the live
- * site, or `/x` → `/v/0.31.0-beta/x`. A page that does not exist there answers
- * 404 in that release, which says exactly that.
+ * The same page in another release of its product: `/kv/v/0.0.1/x` → `/kv/x`
+ * for the live site, or `/x` → `/v/0.31.0-beta/x`. A page that does not exist
+ * there answers 404 in that release, which says exactly that.
  */
 export function inRelease(pathname: string, target: string | null): string {
-  const rest = pathname.replace(/^\/v\/[^/]+/, "") || "/";
-  if (target === null) return rest;
-  return rest === "/" ? `/v/${target}` : `/v/${target}${rest}`;
+  const id = projectOf(pathname);
+  const rest = pathname.slice(startOf(id, releaseOf(pathname)).length);
+  return `${startOf(id, target)}${rest === "/" ? "" : rest}` || "/";
 }
 
 /**

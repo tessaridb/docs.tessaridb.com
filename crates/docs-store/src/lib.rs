@@ -96,6 +96,7 @@ pub struct Store {
     /// without them. See [`Store::signing_in`] for why that is worth doing.
     credentials: Option<(String, String)>,
     namespace: String,
+    database: String,
 }
 
 impl Store {
@@ -117,8 +118,9 @@ impl Store {
             client,
             credentials,
             namespace: namespace.to_owned(),
+            database: schema::LIVE_DATABASE.to_owned(),
         };
-        let script = schema::use_namespace(&store.namespace);
+        let script = schema::use_place(&store.namespace, &store.database);
         store.run(&script).await?;
         Ok(store)
     }
@@ -151,7 +153,7 @@ impl Store {
             let script = schema::define_namespace(&self.namespace);
             self.run(&script).await?;
         }
-        let script = schema::statements(&self.namespace);
+        let script = schema::statements(&self.namespace, &self.database);
         self.run(&script).await?;
         log::info!("schema applied in namespace {}", self.namespace);
         Ok(())
@@ -258,7 +260,7 @@ impl Store {
         Ok(answers)
     }
 
-    /// Points this connection at another namespace's `docs` database.
+    /// Points this connection at another place — an archived release.
     ///
     /// The same connection, so the same sign-in: a second connection would cost
     /// the node a second password verification for one request.
@@ -267,19 +269,24 @@ impl Store {
     ///
     /// [`Fault::UnsafeNamespace`] for a name that cannot be spelled into the
     /// statement, and [`Fault::Client`] when the node refuses.
-    pub async fn switch(&mut self, namespace: &str) -> Result<(), Fault> {
-        if !versions::is_safe_namespace(namespace) {
-            return Err(Fault::UnsafeNamespace(namespace.to_owned()));
+    pub async fn switch(&mut self, place: &versions::Place) -> Result<(), Fault> {
+        if !place.is_safe() {
+            return Err(Fault::UnsafeNamespace(place.to_string()));
         }
-        self.run(&schema::use_namespace(namespace)).await?;
-        namespace.clone_into(&mut self.namespace);
+        self.run(&schema::use_place(&place.namespace, &place.database))
+            .await?;
+        place.namespace.clone_into(&mut self.namespace);
+        place.database.clone_into(&mut self.database);
         Ok(())
     }
 
-    /// Which version's namespace this connection is pointed at.
+    /// Which namespace and database this connection is pointed at.
     #[must_use]
-    pub fn namespace(&self) -> &str {
-        &self.namespace
+    pub fn place(&self) -> versions::Place {
+        versions::Place {
+            namespace: self.namespace.clone(),
+            database: self.database.clone(),
+        }
     }
 }
 

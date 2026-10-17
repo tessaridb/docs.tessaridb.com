@@ -1,13 +1,23 @@
-//! Releases kept apart: each archived version in a namespace of its own, and the
-//! list in the live namespace that names them.
+//! Releases kept apart: each archived version in a database of its own, inside
+//! a namespace per product, and the list in the live site that names them.
 //!
-//! # Why a namespace per release and not a `version` field on every record
+//! # Why a database per release and not a `version` field on every record
 //!
 //! A field would put every release in one search index, and every read would
 //! carry a predicate the store must re-test — the ranked search included, whose
-//! statistics would then be the statistics of all releases at once. A namespace
+//! statistics would then be the statistics of all releases at once. A database
 //! gives each release its own records, its own index and its own scores, and the
 //! site's code reads one exactly as it reads the live one.
+//!
+//! # Why a namespace per product and not one per release
+//!
+//! Releases were first kept a namespace each, with one `docs` database inside,
+//! so the store grew a namespace with every release of every product while the
+//! level built to hold several databases held one. A product's releases now sit
+//! side by side in the product's namespace — `kv` holds `v0_0_1` and `v0_0_2` —
+//! which is what the two levels are for. A release kept the old way carries no
+//! `database` in its row and is read as `docs`, so it keeps working until
+//! [`Store::rehome`] moves it.
 //!
 //! # Why the archive is copied from the store and not from `content/`
 //!
@@ -32,6 +42,33 @@ use crate::ingest::{Corpus, Section, Written, check};
 use crate::projects::Project;
 use crate::{Fault, Store, number_of, records, schema, text, text_of};
 
+/// Where a release's pages are: a namespace and a database inside it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Place {
+    /// The product's namespace — or, for a release kept before products had
+    /// namespaces, the release's own.
+    pub namespace: String,
+    /// The release's database — `docs` for one kept the old way.
+    pub database: String,
+}
+
+impl Place {
+    /// Whether both names can be spelled into `USE` as they stand.
+    #[must_use]
+    pub fn is_safe(&self) -> bool {
+        is_safe_namespace(&self.namespace) && is_safe_namespace(&self.database)
+    }
+}
+
+impl std::fmt::Display for Place {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "{}.{}", self.namespace, self.database)
+    }
+}
+
+/// The database a release kept before products had namespaces lives in.
+pub const OLD_DATABASE: &str = "docs";
+
 /// One archived release.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Version {
@@ -43,7 +80,7 @@ pub struct Version {
     pub label: String,
     /// Where its pages are. Not sent to a browser — the label is the address.
     #[serde(skip)]
-    pub namespace: String,
+    pub place: Place,
 }
 
 /// Whether a label can name a release in a URL and inside a quoted record id.
@@ -60,7 +97,8 @@ pub fn is_safe_label(label: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '-'))
 }
 
-/// Whether a name can be spelled into `USE NAMESPACE` as it stands.
+/// Whether a name can be spelled into `USE NAMESPACE` or `USE DATABASE` as it
+/// stands.
 #[must_use]
 pub fn is_safe_namespace(namespace: &str) -> bool {
     namespace.len() <= 64
@@ -70,23 +108,23 @@ pub fn is_safe_namespace(namespace: &str) -> bool {
         })
 }
 
-/// The namespace a release is kept in when none is named: the engine's
-/// `0.32.0-beta` is kept in `v0_32_0_beta`, TessariKV's `0.0.2` in `kv_v0_0_2`.
+/// Where a release is kept: the product's namespace — `db` for the engine —
+/// and a database named after the label. The engine's `0.32.0-beta` is kept in
+/// `db.v0_32_0_beta`, TessariKV's `0.0.2` in `kv.v0_0_2`.
 #[must_use]
-pub fn namespace_for(project: Project, label: &str) -> String {
-    let mut namespace = String::with_capacity(label.len().saturating_add(4));
-    if let Some(root) = project.root() {
-        namespace.push_str(root);
-        namespace.push('_');
-    }
-    namespace.push('v');
+pub fn place_for(project: Project, label: &str) -> Place {
+    let mut database = String::with_capacity(label.len().saturating_add(1));
+    database.push('v');
     for character in label.chars() {
-        namespace.push(match character {
+        database.push(match character {
             '.' | '-' => '_',
             other => other.to_ascii_lowercase(),
         });
     }
-    namespace
+    Place {
+        namespace: project.slug().to_owned(),
+        database,
+    }
 }
 
 /// Release order: `0.10.0` after `0.9.0`, and a release after its own
@@ -137,15 +175,15 @@ impl Store {
             .filter(|version| {
                 version.project == project
                     && is_safe_label(&version.label)
-                    && is_safe_namespace(&version.namespace)
+                    && version.place.is_safe()
             })
             .collect();
         versions.sort_by(|left, right| precedence(&right.label, &left.label));
         Ok(versions)
     }
 
-    /// The namespace an archived release lives in, or `None` when no release
-    /// carries that label — including a label that could not be one.
+    /// Where an archived release is, or `None` when no release carries that
+    /// label — including a label that could not be one.
     ///
     /// The label is a **bound value** here, not spelled into the statement: it
     /// arrives from a URL.
@@ -153,12 +191,12 @@ impl Store {
     /// # Errors
     ///
     /// [`Fault::Client`] when the node refuses, and [`Fault::UnsafeNamespace`]
-    /// when the recorded namespace could not be selected safely.
-    pub async fn namespace_of(
+    /// when the recorded place could not be selected safely.
+    pub async fn place_of(
         &mut self,
         project: Project,
         label: &str,
-    ) -> Result<Option<String>, Fault> {
+    ) -> Result<Option<Place>, Fault> {
         if !is_safe_label(label) {
             return Ok(None);
         }
@@ -177,11 +215,10 @@ impl Store {
         else {
             return Ok(None);
         };
-        let namespace = version.namespace;
-        if is_safe_namespace(&namespace) {
-            Ok(Some(namespace))
+        if version.place.is_safe() {
+            Ok(Some(version.place))
         } else {
-            Err(Fault::UnsafeNamespace(namespace))
+            Err(Fault::UnsafeNamespace(version.place.to_string()))
         }
     }
 
@@ -250,8 +287,8 @@ impl Store {
         Ok(Corpus { sections, pages })
     }
 
-    /// Keeps one project's part of this namespace's site as release `label`,
-    /// in namespace `into`.
+    /// Keeps one project's part of the site this connection reads as release
+    /// `label`, at `into`.
     ///
     /// A product's archive holds its own section and nothing else; the
     /// engine's holds everything that is not a product's.
@@ -259,10 +296,10 @@ impl Store {
     /// The copy is read back and compared page by page before the release is
     /// listed, so a release that is listed is one that was kept whole.
     /// Archiving a label again replaces what it held, so a fix to a release's
-    /// pages can be archived over it. The connection is pointed back at the
-    /// namespace it started in, whatever happens.
+    /// pages can be archived over it. The connection is pointed back where it
+    /// started, whatever happens.
     ///
-    /// Needs authority over the store: it declares a namespace.
+    /// Needs authority over the store: it may declare a namespace.
     ///
     /// # Errors
     ///
@@ -273,41 +310,26 @@ impl Store {
         &mut self,
         project: Project,
         label: &str,
-        into: &str,
+        into: &Place,
     ) -> Result<Written, Fault> {
         if !is_safe_label(label) {
             return Err(Fault::UnsafeVersion);
         }
-        if !is_safe_namespace(into) || into == self.namespace() {
-            return Err(Fault::UnsafeNamespace(into.to_owned()));
-        }
-        let live = self.namespace().to_owned();
-        let corpus = only(project, self.corpus().await?);
-
-        let copied = self.fill(into, &corpus).await;
-        self.switch(&live).await?;
-        let (written, kept) = copied?;
-        let differing = differences(&corpus, &kept);
-        if !differing.is_empty() {
-            return Err(Fault::ArchiveDiffers(differing.join(", ")));
-        }
+        let live = self.place();
+        let written = self.keep(project, &live, into).await?;
 
         // Declared here as well as in the schema: a deployed API applies the
         // schema as an editor, which may be refused a definition, and this runs
         // as the store's owner.
-        // The engine's releases keep the id they always had; a product's is
-        // qualified by it, so one label can be a release of each.
-        let id = match project.root() {
-            None => label.to_owned(),
-            Some(root) => format!("{root}/{label}"),
-        };
+        let id = version_id(project, label);
         self.run_with(
             &format!(
-                "DEFINE COLLECTION IF NOT EXISTS version;\nDELETE version:'{id}';\nCREATE version:'{id}' = {{ label: $label, namespace: $namespace, project: $project, archived_at: time::now() }};"
+                "DEFINE COLLECTION IF NOT EXISTS version;\nDELETE version:'{id}';\nCREATE version:'{id}' = {{ label: $label, namespace: $namespace, database: $database, project: $project, archived_at: time::now() }};"
             ),
             vec![
                 ("label".to_owned(), text(label)),
-                ("namespace".to_owned(), text(into)),
+                ("namespace".to_owned(), text(&into.namespace)),
+                ("database".to_owned(), text(&into.database)),
                 ("project".to_owned(), text(project.slug())),
             ],
         )
@@ -321,14 +343,100 @@ impl Store {
         Ok(written)
     }
 
-    /// Writes the archive, then reads it back as a corpus to compare.
-    async fn fill(&mut self, into: &str, corpus: &Corpus) -> Result<(Written, Corpus), Fault> {
-        self.run(&schema::define_namespace(into)).await?;
-        self.run(&schema::statements(into)).await?;
+    /// Moves every listed release that is not where [`place_for`] puts it —
+    /// a release kept a namespace of its own, before products had one each —
+    /// into its product's namespace, and points its row there. Returns what
+    /// moved, from where to where.
+    ///
+    /// Each move is a copy compared page by page before the row changes, so a
+    /// reader is never sent to a release that was not kept whole. The old
+    /// namespace is left as it was: dropping it is a separate decision, taken
+    /// once the moved releases have been read on the site.
+    ///
+    /// Run it again and it moves nothing.
+    ///
+    /// # Errors
+    ///
+    /// As [`Store::archive`]; a release whose copy differs stops the run with
+    /// its row still pointing at the old place.
+    pub async fn rehome(&mut self) -> Result<Vec<(String, Place, Place)>, Fault> {
+        let mut moved = Vec::new();
+        for project in Project::ALL {
+            for version in self.versions(project).await? {
+                let into = place_for(project, &version.label);
+                if version.place == into {
+                    continue;
+                }
+                self.keep(project, &version.place, &into).await?;
+                // A merge, so the row keeps when the release was archived.
+                let id = version_id(project, &version.label);
+                self.run_with(
+                    &format!("UPDATE version:'{id}' MERGE {{ namespace: $namespace, database: $database }};"),
+                    vec![
+                        ("namespace".to_owned(), text(&into.namespace)),
+                        ("database".to_owned(), text(&into.database)),
+                    ],
+                )
+                .await?;
+                log::info!(
+                    "moved {} {} from {} to {into}",
+                    project.slug(),
+                    version.label,
+                    version.place
+                );
+                moved.push((version.label, version.place, into));
+            }
+        }
+        Ok(moved)
+    }
+
+    /// Copies one project's part of the site at `from` to `into` and checks the
+    /// copy page by page. Leaves the connection where it found it.
+    async fn keep(
+        &mut self,
+        project: Project,
+        from: &Place,
+        into: &Place,
+    ) -> Result<Written, Fault> {
+        if !from.is_safe() || !into.is_safe() || into == from || *into == self.place() {
+            return Err(Fault::UnsafeNamespace(into.to_string()));
+        }
+        let started = self.place();
+        let copied = self.copy(project, from, into).await;
+        self.switch(&started).await?;
+        let (corpus, written, kept) = copied?;
+        let differing = differences(&corpus, &kept);
+        if !differing.is_empty() {
+            return Err(Fault::ArchiveDiffers(differing.join(", ")));
+        }
+        Ok(written)
+    }
+
+    /// Reads the corpus at `from`, writes it at `into`, and reads it back.
+    async fn copy(
+        &mut self,
+        project: Project,
+        from: &Place,
+        into: &Place,
+    ) -> Result<(Corpus, Written, Corpus), Fault> {
+        self.switch(from).await?;
+        let corpus = only(project, self.corpus().await?);
+        self.run(&schema::define_namespace(&into.namespace)).await?;
+        self.run(&schema::statements(&into.namespace, &into.database))
+            .await?;
         self.switch(into).await?;
-        let written = self.ingest(corpus).await?;
+        let written = self.ingest(&corpus).await?;
         let kept = self.corpus().await?;
-        Ok((written, kept))
+        Ok((corpus, written, kept))
+    }
+}
+
+/// A release's row id. The engine's releases keep the id they always had; a
+/// product's is qualified by it, so one label can be a release of each.
+fn version_id(project: Project, label: &str) -> String {
+    match project.root() {
+        None => label.to_owned(),
+        Some(root) => format!("{root}/{label}"),
     }
 }
 
@@ -338,7 +446,11 @@ fn version_of(value: &Value) -> Version {
     Version {
         project: Project::named(&text_of(value, "project")).unwrap_or(Project::Engine),
         label: text_of(value, "label"),
-        namespace: text_of(value, "namespace"),
+        place: Place {
+            namespace: text_of(value, "namespace"),
+            database: present(text_of(value, "database"))
+                .unwrap_or_else(|| OLD_DATABASE.to_owned()),
+        },
     }
 }
 
@@ -447,25 +559,30 @@ mod tests {
     }
 
     #[test]
-    fn a_release_is_kept_in_a_namespace_named_after_it() {
+    fn a_release_is_a_database_in_its_projects_namespace() {
         use crate::projects::Project;
+        let place = |namespace: &str, database: &str| super::Place {
+            namespace: namespace.to_owned(),
+            database: database.to_owned(),
+        };
         assert_eq!(
-            super::namespace_for(Project::Engine, "0.32.0-beta"),
-            "v0_32_0_beta"
+            super::place_for(Project::Engine, "0.32.0-beta"),
+            place("db", "v0_32_0_beta")
         );
         assert_eq!(
-            super::namespace_for(Project::Engine, "1.0.0-RC.1"),
-            "v1_0_0_rc_1"
+            super::place_for(Project::Engine, "1.0.0-RC.1"),
+            place("db", "v1_0_0_rc_1")
         );
-        assert_eq!(super::namespace_for(Project::Kv, "0.0.2"), "kv_v0_0_2");
         assert_eq!(
-            super::namespace_for(Project::AgentMemory, "0.4.1-alpha"),
-            "am_v0_4_1_alpha"
+            super::place_for(Project::Kv, "0.0.2"),
+            place("kv", "v0_0_2")
         );
-        assert!(is_safe_namespace(&super::namespace_for(
-            Project::S3,
-            "0.2.1"
-        )));
+        assert_eq!(
+            super::place_for(Project::AgentMemory, "0.4.1-alpha"),
+            place("am", "v0_4_1_alpha")
+        );
+        let s3 = super::place_for(Project::S3, "0.2.1");
+        assert!(is_safe_namespace(&s3.namespace) && is_safe_namespace(&s3.database));
     }
 
     #[test]

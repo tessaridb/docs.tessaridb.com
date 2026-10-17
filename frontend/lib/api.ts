@@ -7,6 +7,8 @@
  * a route handler of ours rather than calling the API from the page.
  */
 
+import type { ProjectId } from "./projects.ts";
+
 /** Where the API is. A bare origin; the store's own address is not spelled here. */
 const API = process.env.DOCS_API ?? "http://127.0.0.1:8080";
 
@@ -101,14 +103,22 @@ function from(archived: string | null): string {
   return archived === null ? "/api" : `/api/v/${encodeURIComponent(archived)}`;
 }
 
-/** The archived releases, newest first. */
-export function releases(): Promise<Release[]> {
-  return get<Release[]>("/api/versions", REVALIDATE);
+/** `?project=…` — which product a listing is about. The API refuses any other name. */
+function scope(id: ProjectId): string {
+  return `project=${id}`;
 }
 
-/** The whole left-hand tree of the live site, or of an archived release. */
-export function nav(archived: string | null = null): Promise<TreeNode[]> {
-  return get<TreeNode[]>(`${from(archived)}/nav`, REVALIDATE);
+/** One project's archived releases, newest first. */
+export function releases(id: ProjectId): Promise<Release[]> {
+  return get<Release[]>(`/api/versions?${scope(id)}`, REVALIDATE);
+}
+
+/** One project's left-hand tree, on the live site or in an archived release. */
+export function nav(
+  id: ProjectId,
+  archived: string | null = null,
+): Promise<TreeNode[]> {
+  return get<TreeNode[]>(`${from(archived)}/nav?${scope(id)}`, REVALIDATE);
 }
 
 /**
@@ -140,21 +150,30 @@ export async function page(
 }
 
 /**
- * A ranked search of one release — the live site's index, or an archived
- * release's own. Never cached: the query is the reader's, not the site's.
+ * A ranked search of one project's release — the live site's index, or an
+ * archived release's own. Never cached: the query is the reader's, not the site's.
  */
 export function search(
   query: string,
-  limit = 20,
-  archived: string | null = null,
+  limit: number,
+  archived: string | null,
+  id: ProjectId,
 ): Promise<Hit[]> {
-  const asked = new URLSearchParams({ q: query, limit: String(limit) });
+  const asked = new URLSearchParams({
+    q: query,
+    limit: String(limit),
+    project: id,
+  });
   return get<Hit[]>(`${from(archived)}/search?${asked}`, false);
 }
 
-/** Words one release holds that begin with what is being typed. Never cached. */
-export function suggest(typed: string, archived: string | null = null): Promise<string[]> {
-  const asked = new URLSearchParams({ p: typed });
+/** Words one project's release holds that begin with what is being typed. Never cached. */
+export function suggest(
+  typed: string,
+  archived: string | null,
+  id: ProjectId,
+): Promise<string[]> {
+  const asked = new URLSearchParams({ p: typed, project: id });
   return get<string[]>(`${from(archived)}/suggest?${asked}`, false);
 }
 

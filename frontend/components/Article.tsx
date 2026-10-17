@@ -1,4 +1,5 @@
 import type { Page } from "@/lib/api";
+import { projectOf } from "@/lib/projects";
 import { withinRelease } from "@/lib/version";
 import { CodeWrap } from "./CodeWrap";
 import { Alert } from "./icons";
@@ -10,7 +11,14 @@ import { Alert } from "./icons";
  * component does not parse Markdown and must not start: the ids in the body and
  * the anchors in the outline agree only because one piece of code produced both.
  */
-export function Article({ page, base = "" }: { page: Page; base?: string }) {
+export function Article({
+  page,
+  archived = null,
+}: {
+  page: Page;
+  /** The archived release the page is read in, or `null` on the live site. */
+  archived?: string | null;
+}) {
   return (
     <>
       <article className="article">
@@ -33,7 +41,9 @@ export function Article({ page, base = "" }: { page: Page; base?: string }) {
             assumption rests on. */}
         <div
           className="prose"
-          dangerouslySetInnerHTML={{ __html: withinRelease(page.html, base) }}
+          dangerouslySetInnerHTML={{
+            __html: withinRelease(page.html, projectOf(`/${page.slug}`), archived),
+          }}
         />
         {/* Decorates what the renderer emitted, after it is on the page. */}
         <CodeWrap />

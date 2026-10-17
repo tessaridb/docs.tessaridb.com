@@ -34,8 +34,11 @@ pub enum Task {
     Serve,
     /// Write the content tree to a running site, over its API.
     Publish,
-    /// Keep the site as it stands as one release, in a namespace of its own.
+    /// Keep the site as it stands as one release, a database in its product's
+    /// namespace.
     Archive,
+    /// Move releases kept a namespace each into their product's namespace.
+    Rehome,
 }
 
 /// A parsed command line, with every default already applied.
@@ -63,7 +66,7 @@ pub struct Asked {
     pub prune: bool,
     /// `archive`: the release label the site is kept as, e.g. `0.32.0-beta`.
     pub release: Option<String>,
-    /// `archive`: the namespace it is kept in. Derived from the label when absent.
+    /// `archive`: the namespace it is kept in. The product's own when absent.
     pub into: Option<String>,
     /// `archive`: which product's section is kept; the engine when not named.
     pub project: Project,
@@ -85,6 +88,8 @@ docs — the documentation site for TessariDB
   docs archive --as <version>    keep the site as it stands as that release
   docs archive --project <p> --as <version>
                                  keep one product's section as its release
+  docs rehome                    move releases kept a namespace each into
+                                 their product's namespace, a database each
 
 The store owns the content. content/ is where it is written and reviewed, and
 what an empty store is seeded from — but pages are also edited through the API,
@@ -101,9 +106,10 @@ Options
   --apply            publish: write. Without it, publish only says what it would
   --prune            publish: also remove pages the site has and content/ lacks
   --as <version>     archive: the release label, e.g. 0.32.0-beta
-  --into <ns>        archive: the namespace to keep it in (default: v + the
-                     label with . and - as _, e.g. v0_32_0_beta; a product's
-                     is prefixed with its name, e.g. kv_v0_0_2)
+  --into <ns>        archive: the namespace to keep it in (default: the
+                     product's own — db, s3, am or kv); the release is a
+                     database in it named v + the label with . and - as _,
+                     e.g. db.v0_32_0_beta, kv.v0_0_2
   --project <p>      archive: s3, am or kv keeps that product's section alone;
                      db, or no flag, keeps the engine's pages
   --help             this
@@ -136,9 +142,12 @@ store and replaces everything it holds; publish runs anywhere, writes only what
 differs, and removes nothing unless asked. A deployment seeds with ingest and is
 maintained with publish.
 
-archive copies the site from --namespace into a namespace of its own and lists
-it there as a release the site can show. It declares a namespace, so it runs as
-a store-wide user. Archiving a label again replaces what it held.
+archive copies the site from --namespace into a database of its own, inside
+the product's namespace, and lists it there as a release the site can show. It
+may declare a namespace, so it runs as a store-wide user. Archiving a label
+again replaces what it held. rehome moves a release kept the old way — a
+namespace each — the same way, compares the copy page by page, and repoints
+its row; the old namespace is left for the owner to drop.
 ";
 
 /// Either the parsed arguments, or something to print and the code to exit with.
@@ -166,12 +175,13 @@ pub fn read(words: &[String], environment: &dyn Fn(&str) -> Option<String>) -> R
         "serve" => Task::Serve,
         "publish" => Task::Publish,
         "archive" => Task::Archive,
+        "rehome" => Task::Rehome,
         "--help" | "-h" | "help" => return Read::Say(USAGE.to_owned(), 0),
         "--version" => return Read::Say(format!("docs {}\n", env!("CARGO_PKG_VERSION")), 0),
         other => {
             return Read::Say(
                 format!(
-                    "{other} is not one of check, ingest, serve, publish or archive\n\n{USAGE}"
+                    "{other} is not one of check, ingest, serve, publish, archive or rehome\n\n{USAGE}"
                 ),
                 2,
             );
@@ -382,6 +392,12 @@ mod tests {
     #[test]
     fn no_arguments_at_all_is_the_usage_and_a_failure() {
         assert_eq!(read(&[], &nothing), Read::Say(super::USAGE.to_owned(), 2));
+    }
+
+    #[test]
+    fn rehome_takes_nothing_of_archive_s() {
+        assert_eq!(asked(&["rehome"]).expect("parses").task, Task::Rehome);
+        assert!(asked(&["rehome", "--as", "0.1.0"]).is_err());
     }
 
     #[test]

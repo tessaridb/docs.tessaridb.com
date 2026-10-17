@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { projects, root } from "@/lib/projects";
 import { origin } from "@/lib/site";
 
 /**
@@ -25,9 +26,22 @@ import { origin } from "@/lib/site";
  * engine needs to render a page, and a page whose stylesheet is blocked is
  * judged as the unstyled one.
  */
+/** Each product's own search page, closed to crawling like the engine's. */
+const products = projects.flatMap((each) => root(each.id) ?? []);
+
 export default function robots(): MetadataRoute.Robots {
   return {
-    rules: [{ userAgent: "*", allow: "/", disallow: ["/api/", "/search"] }],
+    rules: [
+      {
+        userAgent: "*",
+        allow: "/",
+        disallow: [
+          "/api/",
+          "/search",
+          ...products.map((id) => `/${id}/search`),
+        ],
+      },
+    ],
     sitemap: `${origin}/sitemap.xml`,
     host: origin,
   };

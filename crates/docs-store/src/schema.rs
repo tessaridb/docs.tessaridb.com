@@ -71,19 +71,23 @@ pub fn define_namespace(namespace: &str) -> String {
     format!("DEFINE NAMESPACE IF NOT EXISTS {namespace};")
 }
 
+/// The database the live site is read from, inside its namespace.
+pub const LIVE_DATABASE: &str = "docs";
+
 /// Every statement the site's schema is made of, in order.
 ///
-/// `namespace` is the version this doc set belongs to — a namespace per released
-/// version, so switching version is switching namespace and an old version is
-/// never a filter somebody forgets to apply.
+/// `namespace` and `database` are where this doc set lives — the live site's,
+/// or an archived release's database inside its product's namespace — so
+/// switching release is switching database and an old release is never a
+/// filter somebody forgets to apply.
 ///
 /// The namespace itself is **not** here — see [`define_namespace`].
 #[must_use]
-pub fn statements(namespace: &str) -> String {
+pub fn statements(namespace: &str, database: &str) -> String {
     format!(
         "USE NAMESPACE {namespace};
-DEFINE DATABASE IF NOT EXISTS docs;
-USE DATABASE docs;
+DEFINE DATABASE IF NOT EXISTS {database};
+USE DATABASE {database};
 
 -- `lowercase` and `ascii` make two spellings of a word one term. `stemmer` is
 -- the one that makes two *words* one term, and without it a reader searching
@@ -135,13 +139,13 @@ DEFINE SEARCH IF NOT EXISTS words ON fragment FIELDS title, heading, body ANALYZ
 
 /// Selecting the namespace and database on a connection that is already open.
 #[must_use]
-pub fn use_namespace(namespace: &str) -> String {
-    format!("USE NAMESPACE {namespace};\nUSE DATABASE docs;\n")
+pub fn use_place(namespace: &str, database: &str) -> String {
+    format!("USE NAMESPACE {namespace};\nUSE DATABASE {database};\n")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{define_namespace, is_safe_slug, statements, use_namespace};
+    use super::{define_namespace, is_safe_slug, statements, use_place};
 
     #[test]
     fn a_slug_that_could_close_a_quoted_id_is_refused() {
@@ -162,7 +166,7 @@ mod tests {
 
     #[test]
     fn every_definition_is_re_runnable_so_a_restart_is_not_a_special_case() {
-        let script = statements("v0_0_3_alpha");
+        let script = statements("v0_0_3_alpha", "docs");
         for line in script.lines() {
             let line = line.trim();
             if line.starts_with("DEFINE") {
@@ -178,7 +182,7 @@ mod tests {
     fn the_only_analyzed_field_is_the_only_indexed_one() {
         // If these ever disagree, ranking silently stops meaning what the search
         // route says it means. Cheaper to assert than to notice in production.
-        let script = statements("v1");
+        let script = statements("v1", "docs");
         assert!(
             script.contains(
                 "DEFINE FIELD IF NOT EXISTS text ON fragment TYPE string ANALYZER english"
@@ -219,7 +223,7 @@ mod tests {
         // by the analyzed field and by the `site` search — stems, and the
         // unstemmed one is used by the type-ahead search alone, which ranks
         // nothing and must offer words a reader would type.
-        let script = statements("v1");
+        let script = statements("v1", "docs");
         let ranking = "english";
         assert!(
             script.contains(&format!("ON fragment TYPE string ANALYZER {ranking};")),
@@ -265,12 +269,15 @@ mod tests {
     fn the_namespace_is_the_version() {
         assert!(define_namespace("v0_2_0").contains("DEFINE NAMESPACE IF NOT EXISTS v0_2_0"));
         assert!(
-            !statements("v0_2_0").contains("DEFINE NAMESPACE"),
+            !statements("v0_2_0", "docs").contains("DEFINE NAMESPACE"),
             "the schema must not ask for store-wide authority on every start"
         );
         assert_eq!(
-            use_namespace("v0_2_0"),
-            "USE NAMESPACE v0_2_0;\nUSE DATABASE docs;\n"
+            use_place("kv", "v0_0_2"),
+            "USE NAMESPACE kv;\nUSE DATABASE v0_0_2;\n"
         );
+        assert!(statements("kv", "v0_0_2").starts_with(
+            "USE NAMESPACE kv;\nDEFINE DATABASE IF NOT EXISTS v0_0_2;\nUSE DATABASE v0_0_2;"
+        ));
     }
 }

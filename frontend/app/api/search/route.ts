@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { search } from "@/lib/api";
+import { isProjectId } from "@/lib/projects";
 import { release } from "@/lib/version";
 
 /**
@@ -23,9 +24,11 @@ export async function GET(request: Request) {
   if (asked.trim().length < 2) return NextResponse.json([]);
   const archived = release(params.get("v"));
   if (archived === undefined) return NextResponse.json([]);
+  const project = params.get("project") ?? "db";
+  if (!isProjectId(project)) return NextResponse.json([]);
 
   try {
-    return NextResponse.json(await search(asked, 20, archived));
+    return NextResponse.json(await search(asked, 20, archived, project));
   } catch (fault) {
     // The reader gets no results rather than an error page: a search box that
     // breaks the page it sits in is worse than one that finds nothing, and the

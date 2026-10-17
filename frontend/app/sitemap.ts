@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { nav } from "@/lib/api";
+import { home, pagePath, projects } from "@/lib/projects";
 import { origin } from "@/lib/site";
 import { leaves } from "@/lib/tree";
 
@@ -25,31 +26,40 @@ export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
-  const home = {
-    url: `${origin}/`,
-    lastModified: now,
-    changeFrequency: "weekly" as const,
-    priority: 1,
-  };
+  const listed: MetadataRoute.Sitemap = [];
 
-  // A tree that cannot be read is a sitemap with one entry, not a 500. The
+  // Every product, each with its own front page and its own tree. A tree that
+  // cannot be read is a sitemap without that product's pages, not a 500. The
   // alternative — failing the route — takes the sitemap out of the index
   // entirely for as long as the store is unreachable, which outlives the
   // outage.
-  let pages: MetadataRoute.Sitemap = [];
-  try {
-    pages = leaves(await nav()).map((leaf) => ({
-      url: `${origin}/${leaf.slug}`,
+  for (const each of projects) {
+    listed.push({
+      url: `${origin}${each.id === "db" ? "/" : home(each.id)}`,
       lastModified: now,
-      changeFrequency: "weekly" as const,
-      // Depth is a reasonable proxy for importance in a documentation tree and
-      // it is derived rather than maintained: a top-level page outranks one
-      // three levels down, and nobody has to remember to say so.
-      priority: Math.max(0.4, 0.9 - leaf.trail.length * 0.1),
-    }));
-  } catch (fault) {
-    console.error("the tree could not be read for the sitemap", fault);
+      changeFrequency: "weekly",
+      priority: each.id === "db" ? 1 : 0.9,
+    });
+    try {
+      for (const leaf of leaves(await nav(each.id))) {
+        // A product's `index` page is its front page, listed above.
+        if (pagePath(leaf.slug) === home(each.id)) continue;
+        listed.push({
+          url: `${origin}${pagePath(leaf.slug)}`,
+          lastModified: now,
+          changeFrequency: "weekly",
+          // Depth is a reasonable proxy for importance in a documentation tree
+          // and it is derived rather than maintained: a top-level page outranks
+          // one three levels down, and nobody has to remember to say so.
+          priority: Math.max(0.4, 0.9 - leaf.trail.length * 0.1),
+        });
+      }
+    } catch (fault) {
+      console.error(
+        `the ${each.id} tree could not be read for the sitemap`,
+        fault,
+      );
+    }
   }
-
-  return [home, ...pages];
+  return listed;
 }
