@@ -279,12 +279,20 @@ async fn each_product_lists_its_own_releases_and_reads_its_own_archive() {
         !body.contains("guide/start"),
         "the engine's tree leaked: {body}"
     );
-    let (status, body) = get(&site, "/api/nav").await;
+    let (status, body) = get(&site, "/api/nav?project=db").await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(body.contains("guide/start"), "{body}");
     assert!(
         !body.contains("kv/what-it-is"),
         "a product leaked into the engine's tree: {body}"
+    );
+    // Without a project the tree is the whole site's, every product's section
+    // in it — what `docs publish` compares the corpus against.
+    let (status, body) = get(&site, "/api/nav").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("guide/start") && body.contains("\"slug\":\"kv\""),
+        "the whole tree, product sections included: {body}"
     );
     let (status, body) = get(&site, "/api/v/0.0.2/nav?project=kv").await;
     assert_eq!(status, StatusCode::OK, "{body}");

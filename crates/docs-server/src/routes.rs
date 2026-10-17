@@ -165,8 +165,12 @@ async fn nav_at(
     nav_in(&site, &scope.project, Some(&version)).await
 }
 
-/// The tree one project shows: its own part of the live site, or of one of
-/// its archived releases.
+/// The tree one project shows — its own part of the live site, or of one of
+/// its archived releases — or, with no project named, the whole tree.
+///
+/// The whole tree is the contract this route had before products had sections,
+/// and `docs publish` still reads it: it compares every page's section against
+/// the corpus, and a narrowed tree hid every product page from that comparison.
 async fn nav_in(site: &Site, named: &str, version: Option<&str>) -> Response {
     let project = match project(named) {
         Ok(project) => project,
@@ -177,6 +181,7 @@ async fn nav_in(site: &Site, named: &str, version: Option<&str>) -> Response {
         Err(refusal) => return *refusal,
     };
     match store.tree().await {
+        Ok(tree) if named.is_empty() => json(StatusCode::OK, &tree),
         Ok(tree) => json(StatusCode::OK, &project.narrow(tree)),
         Err(fault) => refused(&fault),
     }
