@@ -57,7 +57,7 @@ export const projects: readonly Project[] = [
     id: "s3",
     name: "TessariDB S3",
     short: "S3",
-    latest: "0.2.1-beta",
+    latest: "0.3.0-beta",
     site: "https://s3.tessaridb.com",
     blurb: "S3-compatible object storage, its metadata kept in TessariDB.",
     source: "https://github.com/tessaridb/tessaridb-s3",
