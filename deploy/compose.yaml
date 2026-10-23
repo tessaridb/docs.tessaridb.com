@@ -393,7 +393,7 @@ services:
     # byte-equal to the live node through one 0.23.0-beta client, and a MATCHES
     # read via its index. This node is given no client certificate on purpose:
     # its clients are on the store network, which nothing outside reaches.
-    image: tessaridb/tessaridb:0.38.0
+    image: tessaridb/tessaridb:0.38.1
     environment:
       TESSARIDB_STORE: /var/lib/tessaridb/store
       # Every interface, because the API is in a different container. That is
@@ -485,7 +485,7 @@ services:
     # Kept equal to the `db` image above, deliberately: this runs as a client
     # against that node, and a client from a different release is a difference
     # nobody planned for on the one path that declares accounts.
-    image: tessaridb/tessaridb:0.38.0
+    image: tessaridb/tessaridb:0.38.1
     environment:
       TESSARIDB_PASSWORD: ${DOCS_OWNER_PASSWORD:?set it in deploy/.env}
     command:
