@@ -19,6 +19,7 @@ test("the project a path is in, live or archived", () => {
   assert.equal(projectOf("/kv/getting-started"), "kv");
   assert.equal(projectOf("/s3/buckets"), "s3");
   assert.equal(projectOf("/am"), "am");
+  assert.equal(projectOf("/oauth/protocol/tokens"), "oauth");
   assert.equal(projectOf("/kv/v/0.0.2/getting-started"), "kv");
   assert.equal(projectOf("/kv/v/0.0.2"), "kv");
   assert.equal(projectOf("/v/0.34.0/query-language/records"), "db");
@@ -40,10 +41,11 @@ test("a product's own address is its index page", () => {
 test("every project has a home and a latest release", () => {
   assert.deepEqual(
     projects.map((each) => each.id),
-    ["db", "s3", "am", "kv"],
+    ["db", "s3", "am", "kv", "oauth"],
   );
   assert.equal(home("db"), "/");
   assert.equal(home("kv"), "/kv");
+  assert.equal(home("oauth"), "/oauth");
   for (const each of projects) assert.match(each.latest, /^[0-9]/);
   assert.equal(project("am").name, "TessariDB Agent Memory");
 });

@@ -3,9 +3,9 @@
  *
  * The engine's pages were here first and keep the URLs they always had; every
  * other product owns exactly one top-level section named by its id — `/s3`,
- * `/am`, `/kv` — and every page under it is that product's. The API carries the
- * same closed list (`docs-store/src/projects.rs`), so a project named in a
- * request is one of these four or it is refused.
+ * `/am`, `/kv`, `/oauth` — and every page under it is that product's. The API
+ * carries the same closed list (`docs-store/src/projects.rs`), so a project
+ * named in a request is one of these five or it is refused.
  *
  * Each product keeps its own releases: `latest` is the release its live pages
  * describe, and the archived ones are whatever the store kept for it.
@@ -13,7 +13,7 @@
  * No imports, so the node test runner can load this file as it stands.
  */
 
-export type ProjectId = "db" | "s3" | "am" | "kv";
+export type ProjectId = "db" | "s3" | "am" | "kv" | "oauth";
 
 export type Project = {
   id: ProjectId;
@@ -80,12 +80,26 @@ export const projects: readonly Project[] = [
     id: "kv",
     name: "TessariKV",
     short: "TessariKV",
-    latest: "0.1.0",
+    latest: "0.1.1",
     site: "https://kv.tessaridb.com",
     blurb:
       "The storage engine at the heart of TessariDB: pure Rust, lock-free first.",
     source: "https://github.com/tessaridb/tessarikv",
     licence: "Apache License 2.0.",
+  },
+  {
+    id: "oauth",
+    name: "TessariDB OAuth",
+    short: "OAuth",
+    // No release has been cut: these pages describe the `dev` branch, and the
+    // label says so rather than naming a release that does not exist.
+    latest: "0.1.0-dev",
+    site: "https://tessaridb.com/oauth",
+    blurb:
+      "Sign-in for your own applications: an OAuth 2.1 and OpenID Connect server whose state is kept in TessariDB.",
+    source: "https://github.com/tessaridb/tessaridb-oauth",
+    licence:
+      "Business Source License 1.1: free in production, commercially too; offering it to others as a hosted identity, authentication or authorization service, or selling it, needs a commercial licence.",
   },
 ];
 

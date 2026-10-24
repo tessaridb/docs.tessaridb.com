@@ -2,7 +2,7 @@
 //!
 //! The site documents the engine and the products built around it. Each product
 //! other than the engine owns exactly one top-level section, named by its slug —
-//! `s3`, `am`, `kv` — and every page under it is that product's. Everything else
+//! `s3`, `am`, `kv`, `oauth` — and every page under it is that product's. Everything else
 //! is the engine's, which is why the engine has no root of its own: its pages
 //! were here first and keep the URLs they always had.
 //!
@@ -26,13 +26,22 @@ pub enum Project {
     AgentMemory,
     /// TessariKV, under `/kv`.
     Kv,
+    /// TessariDB OAuth, under `/oauth`.
+    OAuth,
 }
 
 impl Project {
     /// Every project, the engine first.
-    pub const ALL: [Self; 4] = [Self::Engine, Self::S3, Self::AgentMemory, Self::Kv];
+    pub const ALL: [Self; 5] = [
+        Self::Engine,
+        Self::S3,
+        Self::AgentMemory,
+        Self::Kv,
+        Self::OAuth,
+    ];
 
-    /// The name a request and a version record carry: `db`, `s3`, `am`, `kv`.
+    /// The name a request and a version record carry: `db`, `s3`, `am`, `kv`,
+    /// `oauth`.
     #[must_use]
     pub const fn slug(self) -> &'static str {
         match self {
@@ -40,6 +49,7 @@ impl Project {
             Self::S3 => "s3",
             Self::AgentMemory => "am",
             Self::Kv => "kv",
+            Self::OAuth => "oauth",
         }
     }
 
@@ -128,10 +138,11 @@ mod tests {
     }
 
     #[test]
-    fn a_name_is_one_of_four_and_nothing_else_is_a_project() {
+    fn a_name_is_one_of_five_and_nothing_else_is_a_project() {
         assert_eq!(Project::named("s3"), Some(Project::S3));
         assert_eq!(Project::named("am"), Some(Project::AgentMemory));
         assert_eq!(Project::named("kv"), Some(Project::Kv));
+        assert_eq!(Project::named("oauth"), Some(Project::OAuth));
         assert_eq!(Project::named("db"), Some(Project::Engine));
         assert_eq!(
             Project::named(""),
@@ -152,6 +163,7 @@ mod tests {
         assert_eq!(Project::of("index"), Project::Engine);
         // A prefix of a name is not the name: `s3x` is the engine's section.
         assert_eq!(Project::of("s3x/page"), Project::Engine);
+        assert_eq!(Project::of("oauth/start/what-it-is"), Project::OAuth);
         assert!(Project::Kv.holds("kv/the-engine"));
         assert!(!Project::Kv.holds("query-language/records"));
     }
