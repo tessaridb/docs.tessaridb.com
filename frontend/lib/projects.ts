@@ -92,7 +92,7 @@ export const projects: readonly Project[] = [
     name: "TessariDB OAuth",
     short: "OAuth",
     latest: "0.1.0",
-    site: "https://tessaridb.com/oauth",
+    site: "https://oauth.tessaridb.com",
     blurb:
       "Sign-in for your own applications: an OAuth 2.1 and OpenID Connect server whose state is kept in TessariDB.",
     source: "https://github.com/tessaridb/tessaridb-oauth",
