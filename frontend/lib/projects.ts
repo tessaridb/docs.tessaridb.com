@@ -91,9 +91,7 @@ export const projects: readonly Project[] = [
     id: "oauth",
     name: "TessariDB OAuth",
     short: "OAuth",
-    // No release has been cut: these pages describe the `dev` branch, and the
-    // label says so rather than naming a release that does not exist.
-    latest: "0.1.0-dev",
+    latest: "0.1.0",
     site: "https://tessaridb.com/oauth",
     blurb:
       "Sign-in for your own applications: an OAuth 2.1 and OpenID Connect server whose state is kept in TessariDB.",
