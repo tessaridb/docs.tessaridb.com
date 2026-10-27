@@ -45,7 +45,7 @@ export const projects: readonly Project[] = [
     id: "db",
     name: "TessariDB",
     short: "TessariDB",
-    latest: "0.39.0",
+    latest: "0.39.1",
     site: "https://tessaridb.com",
     blurb:
       "The database: eleven engines under one language and one transaction.",
@@ -80,7 +80,7 @@ export const projects: readonly Project[] = [
     id: "kv",
     name: "TessariKV",
     short: "TessariKV",
-    latest: "0.1.1",
+    latest: "0.1.2",
     site: "https://kv.tessaridb.com",
     blurb:
       "The storage engine at the heart of TessariDB: pure Rust, lock-free first.",
