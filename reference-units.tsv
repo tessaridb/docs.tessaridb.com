@@ -22,6 +22,7 @@ kind	string
 kind	table
 kind	uuid
 function	array::append
+function	array::at
 function	array::concat
 function	array::distinct
 function	array::first
@@ -71,12 +72,19 @@ function	math::sign
 function	math::sqrt
 function	math::trunc
 function	object::entries
+function	object::get
 function	object::has
 function	object::keys
 function	object::len
 function	object::merge
 function	object::values
 function	rand::uuid
+function	scores::between
+function	scores::intersect
+function	scores::range
+function	scores::rank
+function	scores::score
+function	scores::union
 function	search::explain
 function	search::highlight
 function	search::ranks
@@ -84,6 +92,10 @@ function	search::score
 function	search::snippet
 function	search::table_name
 function	session::context
+function	set::difference
+function	set::intersect
+function	set::len
+function	set::union
 function	string::concat
 function	string::contains
 function	string::ends_with
@@ -207,11 +219,13 @@ form	EXPLAIN
 form	GET
 form	GRANT
 form	GRANT ON REACH
+form	HAND
 form	INCR
 form	INFO FOR
 form	INSERT
 form	KEYS
 form	LET
+form	LIST PUSH
 form	NACK
 form	PERSIST
 form	PUT
@@ -221,6 +235,7 @@ form	REBUILD INDEX
 form	RELATE
 form	RELEASE
 form	RELEASE ALL
+form	RELEASE SAVEPOINT
 form	REMOVE RECIPIENT
 form	RESTORE
 form	RETURN
@@ -228,12 +243,17 @@ form	REVEAL
 form	REVOKE
 form	REVOKE CERTIFICATE
 form	REVOKE ON REACH
+form	ROLLBACK TO
+form	SAVEPOINT
 form	SEAL VAULT
 form	SELECT
 form	SET
 form	THROW
+form	TRIM
+form	TRUNCATE
 form	UNSEAL VAULT
 form	UPDATE
+form	UPDATE over a set
 form	UPSERT
 form	USE
 form	VERIFY
