@@ -68,7 +68,7 @@ export const projects: readonly Project[] = [
     id: "am",
     name: "TessariDB Agent Memory",
     short: "Agent Memory",
-    latest: "0.5.0-beta",
+    latest: "0.6.2",
     site: "https://am.tessaridb.com",
     blurb:
       "Memory for agents that outlives the context window, shared between them.",
