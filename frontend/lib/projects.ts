@@ -45,7 +45,7 @@ export const projects: readonly Project[] = [
     id: "db",
     name: "TessariDB",
     short: "TessariDB",
-    latest: "0.39.5",
+    latest: "0.39.6",
     site: "https://tessaridb.com",
     blurb:
       "The database: eleven engines under one language and one transaction.",
