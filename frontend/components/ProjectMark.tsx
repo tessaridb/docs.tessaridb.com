@@ -6,7 +6,7 @@ import { Mark } from "./icons";
 const BACK =
   "M25 21 H75 A4 4 0 0 1 79 25 V75 A4 4 0 0 1 75 79 H25 A4 4 0 0 1 21 75 V25 A4 4 0 0 1 25 21 Z M 45.73 42.42 L 79.00 45.33 L 79.00 56.37 L 69.67 55.55 L 67.62 79.00 L 55.58 79.00 L 57.72 54.51 L 44.77 53.37 Z";
 
-/** The front square with the T cut out of it — the engine's, S3's, TessariKV's and OAuth's. */
+/** The front square with the T cut out of it: the engine's, S3's, TessariKV's, OAuth's and Vault's. */
 const FRONT_T =
   "M38 34 H88 A4 4 0 0 1 92 38 V88 A4 4 0 0 1 88 92 H38 A4 4 0 0 1 34 88 V38 A4 4 0 0 1 38 34 Z M44 44 H82 V55 H69 V82 H57 V55 H44 Z";
 
@@ -14,7 +14,7 @@ const FRONT_T =
 const FRONT_AM =
   "M38 34 H88 A4 4 0 0 1 92 38 V88 A4 4 0 0 1 88 92 H38 A4 4 0 0 1 34 88 V38 A4 4 0 0 1 38 34 Z M57 48 H69 V58 H57 Z M71 60 H81 V68 H71 Z M43 53 a7 7 0 1 0 14 0 a7 7 0 1 0 -14 0 Z M69 53 a7 7 0 1 0 14 0 a7 7 0 1 0 -14 0 Z M69 75 a7 7 0 1 0 14 0 a7 7 0 1 0 -14 0 Z";
 
-/** The badge the S3, TessariKV and OAuth marks carry on the front square's corner. */
+/** The badge the S3, TessariKV, OAuth and Vault marks carry on the front square's corner. */
 const BADGE =
   "M76 68 H95 A5 5 0 0 1 100 73 V91 A5 5 0 0 1 95 96 H76 A5 5 0 0 1 71 91 V73 A5 5 0 0 1 76 68 Z";
 
@@ -27,14 +27,17 @@ const LETTERS: Record<"s3" | "kv", string> = {
 const KEYHOLE =
   "M85.5 73.5 A5 5 0 0 1 88.4 82.57 L90 90 H81 L82.6 82.57 A5 5 0 0 1 85.5 73.5 Z";
 
+/** Vault's badge carries a padlock, as its own mark does: the shackle, then the body. */
+const SHACKLE = "M81.5 80 V77 A4 4 0 0 1 89.5 77 V80";
+
 /**
  * Each product's mark, drawn from the same geometry its own site uses.
  *
- * The squares are the family's violet on every one, so the four read as one
+ * The squares are the family's violet on every one, so the six read as one
  * family in the switcher; what tells them apart is the part each product's own
  * mark already uses for that — the lettered badge on S3 and TessariKV, the
- * keyhole badge on OAuth, the cut of the front square on Agent Memory — inked in
- * the product's own accent.
+ * keyhole badge on OAuth, the padlock badge on Vault, the cut of the front square
+ * on Agent Memory, inked in the product's own accent.
  *
  * Decorative wherever it sits beside the product's name, which is how it is
  * used; the engine's mark keeps its own label for the places it stands alone.
@@ -82,6 +85,24 @@ export function ProjectMark({
             <path fill={`var(--project-${id})`} d={BADGE} />
             {id === "oauth" ? (
               <path fill="var(--bg)" d={KEYHOLE} />
+            ) : id === "vault" ? (
+              <>
+                <path
+                  fill="none"
+                  stroke="var(--bg)"
+                  strokeWidth="2.6"
+                  strokeLinecap="round"
+                  d={SHACKLE}
+                />
+                <rect
+                  x="78.5"
+                  y="79.5"
+                  width="14"
+                  height="11"
+                  rx="1.8"
+                  fill="var(--bg)"
+                />
+              </>
             ) : (
               <path
                 fill="none"

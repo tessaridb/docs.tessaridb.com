@@ -36,8 +36,8 @@ about the engine than any benchmark table.
 | **Content** | records in TessariDB, written through the API. Not in this repository |
 | **Search** | TessariDB `DEFINE SEARCH`: title, heading and passage weighted as one document (BM25F), the store's snippet window, type-ahead from `COMPLETE` |
 | **Navigation** | the section tree is a graph in the store, walked with `RELATE` edges |
-| **Products** | TessariDB at the plain URLs; TessariDB S3, Agent Memory, TessariKV and TessariDB OAuth each under its own section — `/s3`, `/am`, `/kv`, `/oauth` — with its own tree, search and releases, and a switcher between them |
-| **Versions** | each product's releases kept as databases in that product's namespace (`db`, `s3`, `am`, `kv`, `oauth`) and served under its own `/v/<version>/` — `/v/0.34.0/…` for the engine, `/kv/v/0.0.1/…` for TessariKV — each with its own tree and search index; the newest is the live site |
+| **Products** | TessariDB at the plain URLs; TessariDB S3, Agent Memory, TessariKV, TessariDB OAuth and TessariDB Vault each under its own section — `/s3`, `/am`, `/kv`, `/oauth`, `/vault` — with its own tree, search and releases, and a switcher between them |
+| **Versions** | each product's releases kept as databases in that product's namespace (`db`, `s3`, `am`, `kv`, `oauth`, `vault`) and served under its own `/v/<version>/` — `/v/0.34.0/…` for the engine, `/kv/v/0.0.1/…` for TessariKV — each with its own tree and search index; the newest is the live site |
 | **Front end** | Next.js, server-rendered per request. It holds no content and never talks to the store |
 | **Deploy** | three containers — database, API, front end — and a folder on the host |
 

@@ -20,6 +20,7 @@
   --project-am: oklch(0.66 0.11 245);
   --project-kv: oklch(0.66 0.13 355);
   --project-oauth: oklch(0.68 0.12 75);
+  --project-vault: oklch(0.68 0.12 150);
 
   --bg: #ffffff;
   --bg-raised: #fafafc;
@@ -58,6 +59,7 @@
   --project-am: oklch(0.76 0.11 245);
   --project-kv: oklch(0.75 0.13 355);
   --project-oauth: oklch(0.78 0.12 75);
+  --project-vault: oklch(0.78 0.12 150);
 
   --bg: #0d0d13;
   --bg-raised: #14141d;

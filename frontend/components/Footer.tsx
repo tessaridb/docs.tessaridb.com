@@ -67,9 +67,11 @@ export function Footer({
           <nav className="footer-links" aria-label={here.name}>
             <h2>{here.short}</h2>
             <ul>
-              <li>
-                <a href={here.site}>{here.site.replace("https://", "")}</a>
-              </li>
+              {here.site === null ? null : (
+                <li>
+                  <a href={here.site}>{here.site.replace("https://", "")}</a>
+                </li>
+              )}
               {here.source === null ? null : (
                 <li>
                   <a className="footer-source" href={here.source}>

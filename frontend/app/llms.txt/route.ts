@@ -29,7 +29,7 @@ export async function GET(): Promise<Response> {
   const sections: string[] = [];
   for (const each of projects) {
     sections.push(
-      `\n## ${each.name} — pages\n\n${each.blurb} Latest release ${each.latest}; product site ${each.site}.`,
+      `\n## ${each.name} — pages\n\n${each.blurb} Latest release ${each.latest}${each.site === null ? "" : `; product site ${each.site}`}.`,
     );
     try {
       let heading = "";
@@ -109,7 +109,13 @@ ${index}
 
 ## Elsewhere
 
-${projects.map((each) => `- [${each.name}](${each.site}): the product site`).join("\n")}
+${projects
+  .flatMap((each) =>
+    each.site === null
+      ? []
+      : [`- [${each.name}](${each.site}): the product site`],
+  )
+  .join("\n")}
 - [Search](${origin}/search?q=): the engine's pages, by the site's own full-text index; each
   product's are searched at its own \`/<section>/search?q=\`.
 `;
