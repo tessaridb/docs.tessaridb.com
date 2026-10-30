@@ -104,7 +104,7 @@ export const projects: readonly Project[] = [
     name: "TessariDB Vault",
     short: "Vault",
     latest: "0.0.1",
-    site: null,
+    site: "https://vault.tessaridb.com",
     blurb:
       "A corporate password manager: records sealed in the browser, kept in TessariDB, shared by teams and departments.",
     source: "https://github.com/tessaridb/tessaridb-vault",
