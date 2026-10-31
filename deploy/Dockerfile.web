@@ -1,0 +1,59 @@
+# The front end.
+#
+# Separate from the API because it is the part that faces the public, and
+# because it is the part with its own reason to be restarted — a change to the
+# theme should not close the store.
+#
+# It holds no content and no credentials. Everything it shows it fetched from
+# the API, over the internal network, at request time.
+
+# ── build ───────────────────────────────────────────────────────────────────
+FROM node:24-bookworm-slim AS build
+
+WORKDIR /build
+# The lockfile alone first, so that a change to a component does not reinstall
+# the dependency tree.
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY frontend/ ./
+# `standalone` output: the server plus only the dependencies it actually
+# reached, rather than node_modules entire.
+RUN npm run build
+
+# ── run ─────────────────────────────────────────────────────────────────────
+FROM node:24-bookworm-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
+
+# `node` already exists in this image, uid 1000, and is not root.
+USER node
+WORKDIR /srv
+
+COPY --from=build --chown=node:node /build/.next/standalone ./
+COPY --from=build --chown=node:node /build/.next/static ./.next/static
+COPY --from=build --chown=node:node /build/public ./public
+
+ENV NODE_ENV=production \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
+
+EXPOSE 3000
+
+# Healthy means "this front end is answering", not "this site has a home page".
+# `curl -f` fails on any 4xx, and `/` is a 404 while the store is empty — which
+# is the site's normal first state, so the obvious check reports a working
+# container as sick and keeps doing it until somebody writes a page. What is
+# worth failing on is no answer at all, or a 5xx: when the API is unreachable the
+# front end returns one, and that is the dependency failure this should catch.
+# Both bounds are load-bearing. Without the lower one a refused connection is
+# healthy, because curl reports `000` for a request that never happened and
+# `000` is less than 500 — a dead server passing the check that exists to find
+# it.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
+  CMD code=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ || echo 000); \
+      [ "$code" -ge 200 ] && [ "$code" -lt 500 ]
+
+CMD ["node", "server.js"]

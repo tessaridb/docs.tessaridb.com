@@ -1,0 +1,498 @@
+//! The routes, and the one rule that decides every status code.
+//!
+//! # What a status means here
+//!
+//! A refusal from the store is **not** a server error, and reporting it as one
+//! would send an operator to the logs when the answer is in the request. So:
+//!
+//! | what happened | status |
+//! |---|---|
+//! | the slug names nothing | 404 |
+//! | no credentials on a write | 401, with a challenge |
+//! | the store refused the statement | 403 — the caller may not do this |
+//! | the slug could not be a record id | 400 |
+//! | the node is unreachable | 503 |
+//!
+//! The 401/403 split is the part worth being careful about: 401 says *identify
+//! yourself*, 403 says *you did, and the answer is no*. Collapsing them makes a
+//! client retry credentials that will never work.
+
+use axum::Router;
+use axum::extract::{Path, Query, State};
+use axum::http::{HeaderMap, StatusCode, header};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post};
+use docs_content::parse;
+use docs_store::ingest::Section;
+use docs_store::projects::Project;
+use docs_store::{Fault, Store};
+use serde::Deserialize;
+
+use crate::{Site, session};
+
+/// Every route the site serves.
+pub fn router(site: Site) -> Router {
+    Router::new()
+        .route("/api/session", post(session::issue).delete(session::revoke))
+        .route("/api/nav", get(nav))
+        .route("/api/search", get(search))
+        .route("/api/suggest", get(suggest))
+        .route(
+            "/api/page/{*slug}",
+            get(page).put(put_page).delete(delete_page),
+        )
+        // A subsection's slug carries its parent's (`kv/engine`), so the section
+        // takes the rest of the path, as a page does.
+        .route(
+            "/api/section/{*slug}",
+            get(section).put(put_section).delete(delete_section),
+        )
+        .route("/api/versions", get(versions))
+        .route("/api/v/{version}/nav", get(nav_at))
+        .route("/api/v/{version}/page/{*slug}", get(page_at))
+        .route("/api/v/{version}/search", get(search_at))
+        .route("/api/v/{version}/suggest", get(suggest_at))
+        .route("/api/health", get(health))
+        .with_state(site)
+}
+
+/// What a search asks for.
+#[derive(Debug, Deserialize)]
+pub struct Asked {
+    /// The terms.
+    #[serde(default)]
+    q: String,
+    /// How many results. Clamped by the store.
+    #[serde(default = "twenty")]
+    limit: u32,
+    /// The release to search, when it is not the live site. The site's search
+    /// box sends it this way, because its calls reach this route directly.
+    #[serde(default)]
+    v: String,
+    /// The product whose pages to search; absent is the engine.
+    #[serde(default)]
+    project: String,
+}
+
+/// Which product a listing is about: `?project=s3`. Absent is the engine.
+#[derive(Debug, Default, Deserialize)]
+pub struct Scope {
+    #[serde(default)]
+    project: String,
+}
+
+/// The project a request named, or the 404 every route answers an unknown one
+/// with — the same answer as an unknown release, for the same reason.
+fn project(named: &str) -> Result<Project, Box<Response>> {
+    Project::named(named).ok_or_else(|| Box::new(message(StatusCode::NOT_FOUND, "no such project")))
+}
+
+const fn twenty() -> u32 {
+    20
+}
+
+/// What a section looks like on the wire.
+#[derive(Debug, Deserialize)]
+pub struct SectionBody {
+    title: String,
+    #[serde(default)]
+    parent: Option<String>,
+    #[serde(default)]
+    order: i64,
+    #[serde(default)]
+    icon: Option<String>,
+}
+
+async fn health() -> &'static str {
+    "ok"
+}
+
+/// The archived releases, newest first — labels only. Where each one is kept
+/// is the store's business, and the label is the only address a reader needs.
+async fn versions(State(site): State<Site>, Query(scope): Query<Scope>) -> Response {
+    #[derive(serde::Serialize)]
+    struct Listed {
+        label: String,
+    }
+    let project = match project(&scope.project) {
+        Ok(project) => project,
+        Err(refusal) => return *refusal,
+    };
+    match site.reader().await {
+        Ok(mut store) => match store.versions(project).await {
+            Ok(found) => json(
+                StatusCode::OK,
+                &found
+                    .into_iter()
+                    .map(|version| Listed {
+                        label: version.label,
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+            Err(fault) => refused(&fault),
+        },
+        Err(fault) => refused(&fault),
+    }
+}
+
+/// A read connection for the live site (`None`) or for an archived release.
+///
+/// An unknown release is a 404 here, so every versioned route answers it the
+/// same way and none of them can forget to.
+async fn open(
+    site: &Site,
+    project: Project,
+    version: Option<&str>,
+) -> Result<Store, Box<Response>> {
+    let opened = match version {
+        None => site.reader().await.map(Some),
+        Some(label) => site.archived(project, label).await,
+    };
+    match opened {
+        Ok(Some(store)) => Ok(store),
+        Ok(None) => Err(Box::new(message(StatusCode::NOT_FOUND, "no such version"))),
+        Err(fault) => Err(Box::new(refused(&fault))),
+    }
+}
+
+async fn nav(State(site): State<Site>, Query(scope): Query<Scope>) -> Response {
+    nav_in(&site, &scope.project, None).await
+}
+
+async fn nav_at(
+    State(site): State<Site>,
+    Path(version): Path<String>,
+    Query(scope): Query<Scope>,
+) -> Response {
+    nav_in(&site, &scope.project, Some(&version)).await
+}
+
+/// The tree one project shows — its own part of the live site, or of one of
+/// its archived releases — or, with no project named, the whole tree.
+///
+/// The whole tree is the contract this route had before products had sections,
+/// and `docs publish` still reads it: it compares every page's section against
+/// the corpus, and a narrowed tree hid every product page from that comparison.
+async fn nav_in(site: &Site, named: &str, version: Option<&str>) -> Response {
+    let project = match project(named) {
+        Ok(project) => project,
+        Err(refusal) => return *refusal,
+    };
+    let mut store = match open(site, project, version).await {
+        Ok(store) => store,
+        Err(refusal) => return *refusal,
+    };
+    match store.tree().await {
+        Ok(tree) if named.is_empty() => json(StatusCode::OK, &tree),
+        Ok(tree) => json(StatusCode::OK, &project.narrow(tree)),
+        Err(fault) => refused(&fault),
+    }
+}
+
+/// A page as the front end receives it: rendered, with its outline.
+///
+/// The HTML and the outline are produced **here**, from one Markdown body,
+/// through the code that also assigns search anchors — so a search result, an
+/// outline entry and an id on the page are the same string by construction. A
+/// front end that rendered the Markdown itself would have to reproduce the
+/// anchor rule, and the day it differed every result would land at the top of
+/// the page with nothing reporting a fault.
+#[derive(Debug, serde::Serialize)]
+pub struct Rendered {
+    /// The path this page answers.
+    pub slug: String,
+    /// The title.
+    pub title: String,
+    /// One sentence under the title.
+    pub summary: Option<String>,
+    /// The body, as HTML.
+    pub html: String,
+    /// The right-hand outline.
+    pub outline: Vec<docs_content::Heading>,
+    /// Whether the page describes something the engine does not do yet.
+    pub unreleased: bool,
+}
+
+async fn page(State(site): State<Site>, Path(slug): Path<String>) -> Response {
+    page_in(&site, None, &slug).await
+}
+
+async fn page_at(
+    State(site): State<Site>,
+    Path((version, slug)): Path<(String, String)>,
+) -> Response {
+    page_in(&site, Some(&version), &slug).await
+}
+
+/// A page needs no `?project=`: the first step of its path says which
+/// product's release to look in.
+async fn page_in(site: &Site, version: Option<&str>, slug: &str) -> Response {
+    let mut store = match open(site, Project::of(slug), version).await {
+        Ok(store) => store,
+        Err(refusal) => return *refusal,
+    };
+    match store.article(slug).await {
+        Ok(Some(article)) => {
+            let (outline, _) = docs_content::fragment::split(&article.title, &article.markdown);
+            json(
+                StatusCode::OK,
+                &Rendered {
+                    slug: article.slug,
+                    title: article.title,
+                    summary: article.summary,
+                    html: docs_content::to_html(&article.markdown),
+                    outline,
+                    unreleased: article.unreleased,
+                },
+            )
+        }
+        Ok(None) => message(StatusCode::NOT_FOUND, "no such page"),
+        Err(fault) => refused(&fault),
+    }
+}
+
+async fn section(State(site): State<Site>, Path(slug): Path<String>) -> Response {
+    match site.reader().await {
+        Ok(mut store) => match store.subtree(&slug).await {
+            Ok(found) => json(StatusCode::OK, &found),
+            Err(fault) => refused(&fault),
+        },
+        Err(fault) => refused(&fault),
+    }
+}
+
+async fn search(State(site): State<Site>, Query(asked): Query<Asked>) -> Response {
+    search_in(&site, release(&asked.v), &asked).await
+}
+
+/// `?v=` as a release: empty is the live site.
+fn release(asked: &str) -> Option<&str> {
+    (!asked.is_empty()).then_some(asked)
+}
+
+async fn search_at(
+    State(site): State<Site>,
+    Path(version): Path<String>,
+    Query(asked): Query<Asked>,
+) -> Response {
+    search_in(&site, Some(&version), &asked).await
+}
+
+async fn search_in(site: &Site, version: Option<&str>, asked: &Asked) -> Response {
+    let project = match project(&asked.project) {
+        Ok(project) => project,
+        Err(refusal) => return *refusal,
+    };
+    let mut store = match open(site, project, version).await {
+        Ok(store) => store,
+        Err(refusal) => return *refusal,
+    };
+    match store.search_in(project, &asked.q, asked.limit).await {
+        Ok(hits) => json(StatusCode::OK, &hits),
+        Err(fault) => refused(&fault),
+    }
+}
+
+/// What a type-ahead asks for: the word being typed.
+#[derive(Debug, Deserialize)]
+pub struct Typed {
+    /// The characters so far.
+    #[serde(default)]
+    p: String,
+    /// The release, as on [`Asked`].
+    #[serde(default)]
+    v: String,
+    /// The product, as on [`Asked`].
+    #[serde(default)]
+    project: String,
+}
+
+/// Words the site holds that begin with what is being typed.
+async fn suggest(State(site): State<Site>, Query(typed): Query<Typed>) -> Response {
+    suggest_in(&site, release(&typed.v), &typed).await
+}
+
+async fn suggest_at(
+    State(site): State<Site>,
+    Path(version): Path<String>,
+    Query(typed): Query<Typed>,
+) -> Response {
+    suggest_in(&site, Some(&version), &typed).await
+}
+
+/// Words a release holds. The project chooses which product's archive is read;
+/// on the live site the words are the whole site's, because the term list is
+/// one index and a word is not a page.
+async fn suggest_in(site: &Site, version: Option<&str>, typed: &Typed) -> Response {
+    let project = match project(&typed.project) {
+        Ok(project) => project,
+        Err(refusal) => return *refusal,
+    };
+    let mut store = match open(site, project, version).await {
+        Ok(store) => store,
+        Err(refusal) => return *refusal,
+    };
+    match store.suggest(&typed.p, 6).await {
+        Ok(words) => json(StatusCode::OK, &words),
+        Err(fault) => refused(&fault),
+    }
+}
+
+async fn put_page(
+    State(site): State<Site>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+    source: String,
+) -> Response {
+    // The token first, and the body only after it. The other order runs the
+    // parser for a caller who has not identified themselves, and answers — in
+    // the status — whether their body was well-formed, which is a question no
+    // anonymous caller should get to ask of a write route.
+    let mut store = match session::authorized(&site, &headers).await {
+        Ok(store) => store,
+        Err(refusal) => return *refusal,
+    };
+    // The body is the page's source — front matter and Markdown, exactly what
+    // lives in `content/`. One format for an editor and for the repository, so a
+    // page written through the API can be committed and a page committed can be
+    // edited, without a converter in between that would be a third thing to keep
+    // correct.
+    let page = match parse(&slug, &source) {
+        Ok(page) => page,
+        Err(fault) => return message(StatusCode::BAD_REQUEST, &fault.to_string()),
+    };
+    match store.put_page(&page).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(fault) => refused(&fault),
+    }
+}
+
+async fn delete_page(
+    State(site): State<Site>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let mut store = match session::authorized(&site, &headers).await {
+        Ok(store) => store,
+        Err(refusal) => return *refusal,
+    };
+    match store.delete_page(&slug).await {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => message(StatusCode::NOT_FOUND, "no such page"),
+        Err(fault) => refused(&fault),
+    }
+}
+
+async fn put_section(
+    State(site): State<Site>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+    body: String,
+) -> Response {
+    // As on the page route: the token before the body. This one matters a
+    // little more, because the refusal below is `serde`'s own message and so
+    // describes the shape the route wants.
+    let mut store = match session::authorized(&site, &headers).await {
+        Ok(store) => store,
+        Err(refusal) => return *refusal,
+    };
+    let asked: SectionBody = match serde_json::from_str(&body) {
+        Ok(asked) => asked,
+        Err(fault) => return message(StatusCode::BAD_REQUEST, &fault.to_string()),
+    };
+    let section = Section {
+        slug,
+        title: asked.title,
+        parent: asked.parent,
+        order: asked.order,
+        icon: asked.icon,
+    };
+    match store.put_section(&section).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(fault) => refused(&fault),
+    }
+}
+
+async fn delete_section(
+    State(site): State<Site>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let mut store = match session::authorized(&site, &headers).await {
+        Ok(store) => store,
+        Err(refusal) => return *refusal,
+    };
+    match store.delete_section(&slug).await {
+        Ok(true) => StatusCode::NO_CONTENT.into_response(),
+        Ok(false) => message(StatusCode::NOT_FOUND, "no such section"),
+        Err(fault) => refused(&fault),
+    }
+}
+
+/// Turns a store fault into the status that tells the caller what to do next.
+pub(crate) fn refused(fault: &Fault) -> Response {
+    match fault {
+        // A slug that cannot be a record id came from the request, so it is the
+        // request that is wrong.
+        Fault::UnsafeSlug(slug) => message(
+            StatusCode::BAD_REQUEST,
+            &format!("not a usable path: {slug}"),
+        ),
+        // Same class, different source: this one arrived in a request rather
+        // than from a content path, and the fault deliberately does not repeat
+        // it back.
+        Fault::UnsafeName => message(StatusCode::BAD_REQUEST, &fault.to_string()),
+        Fault::UnsafeVersion => message(StatusCode::NOT_FOUND, "no such version"),
+        Fault::ArchiveDiffers(_) => {
+            log::error!("{fault}");
+            message(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "the archive did not match",
+            )
+        }
+        Fault::UnsafeNamespace(_) => {
+            log::error!("a recorded version names an unusable namespace: {fault}");
+            message(StatusCode::BAD_GATEWAY, "the store answered unexpectedly")
+        }
+        Fault::Client(_) if fault.refusal().is_some() => {
+            // The store said no. That is about this caller and this statement,
+            // never about the server being broken — 403, and the store's own
+            // words, which already name the place in the script.
+            let said = fault.refusal().unwrap_or("refused");
+            log::info!("the store refused: {said}");
+            message(StatusCode::FORBIDDEN, said)
+        }
+        Fault::Client(_) => {
+            log::warn!("the store is unreachable: {fault}");
+            message(StatusCode::SERVICE_UNAVAILABLE, "the store is unavailable")
+        }
+        Fault::Unexpected { .. } => {
+            log::error!("the store answered a shape this build does not read: {fault}");
+            message(StatusCode::BAD_GATEWAY, "the store answered unexpectedly")
+        }
+    }
+}
+
+pub(crate) fn json<T: serde::Serialize>(status: StatusCode, body: &T) -> Response {
+    match serde_json::to_string(body) {
+        Ok(text) => (
+            status,
+            [(header::CONTENT_TYPE, "application/json; charset=utf-8")],
+            text,
+        )
+            .into_response(),
+        Err(fault) => {
+            log::error!("an answer would not serialise: {fault}");
+            message(StatusCode::INTERNAL_SERVER_ERROR, "could not answer")
+        }
+    }
+}
+
+pub(crate) fn message(status: StatusCode, said: &str) -> Response {
+    (
+        status,
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        said.to_owned(),
+    )
+        .into_response()
+}

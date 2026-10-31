@@ -1,0 +1,608 @@
+# Three containers and one folder on the host.
+#
+#   docs-db    the database — the published image, pulled, never built here
+#   docs-api   the site's API
+#   docs-web   the front end
+#
+# The database is separate from the API because when they shared a container a
+# script supervised both, and either one exiting took the other down — so an API
+# crash stopped the database.
+#
+# It used to be built here too, from a `Dockerfile.db` that fetched the engine's
+# private repository over a forwarded SSH agent and compiled a vendored C++ engine,
+# which took forty minutes and needed a key. That is gone: the engine is
+# published as `tessaridb/tessaridb` and this file pulls it. A deploy no longer
+# needs access to the engine's source at all.
+#
+# The store's directory is bound to a folder on the host, so the content
+# survives the container — and so that a backup is a copy of a directory rather
+# than an operation somebody has to remember how to perform.
+#
+#   cp deploy/.env.example deploy/.env    # then set the three passwords
+#   docker compose -f deploy/compose.yaml --env-file deploy/.env up -d
+#
+# On a **fresh** store, once, before the first `up` has anything to serve:
+#
+#   docker compose -f deploy/compose.yaml --env-file deploy/.env \
+#     --profile init run --rm init
+#
+# The site is then on http://localhost:3000.
+
+name: tessaridb-docs
+
+# Docker's json-file driver keeps everything a container has ever said unless it
+# is told otherwise, and every service below restarts itself forever. On an
+# unattended host that is a disk that fills quietly over months and takes the
+# site down for a reason that has nothing to do with the site. Fifty megabytes
+# per service is more log than anyone reads and far less than anyone misses.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  db:
+    # Pinned to a version, deliberately not `latest`.
+    #
+    # The on-disk format is not promised across alpha versions, and `latest`
+    # moves. A container that quietly picked up a newer engine on an unattended
+    # restart is how a store stops opening at three in the morning, for a reason
+    # nobody changed anything to cause. Moving this line is how the engine
+    # under this store is upgraded, and it should be a decision with a backup
+    # taken before it.
+    #
+    # Verified against this store on 2026-09-02 before the switch: the 0.0.2-alpha
+    # engine opened the 0.0.1-alpha store, and all 44 page bodies came back
+    # byte-for-byte identical through the unchanged API.
+    #
+    # Moved to 0.0.3-alpha on 2026-09-05, by owner decision and after a backup.
+    # It had lagged on 0.0.2-alpha for three days, deliberately, because this
+    # release changed the search index format — and the site's search is written
+    # against operators (`MATCHES PREFIX`, `MATCHES FUZZY`) that 0.0.2-alpha
+    # refuses. So the pin and the API are one change: an `api` built from this
+    # tree against a 0.0.2-alpha store answers a search with an error, not with
+    # fewer results.
+    #
+    # The migration was a namespace move rather than an upgrade in place, which
+    # is what the paragraph below is about. Rolling back means pointing
+    # DOCS_NAMESPACE at `v0_0_2_alpha`, its two service users, and this line at
+    # `0.0.2-alpha` — all three together, and with an `api` from before this
+    # commit.
+    #
+    # Moved to 0.0.4-alpha on 2026-09-06, and this one is NOT like the last two.
+    # That release is a single performance fix — full-text search 5.6x faster
+    # because the stemmer stopped allocating on every suffix test — and it
+    # changes no operator, no grammar and no on-disk format. So this is an
+    # upgrade **in place**: the namespace stays `v0_0_3_alpha`, the service users
+    # stay as they are, no reindex is needed and no `api` rebuild is needed.
+    # Rolling back is this line alone.
+    #
+    # The property that makes that safe was measured rather than assumed: an
+    # index written by the 0.0.3-alpha stemmer answers the same records under
+    # 0.0.4-alpha, byte-for-byte, because the stems themselves did not change.
+    #
+    # Moved to 0.0.5-alpha on 2026-09-07, and it is the same kind of move as the
+    # last one: an upgrade **in place**. That release changes no operator, no
+    # grammar and no on-disk format — it is four read-path performance fixes and
+    # one correctness fix — so the namespace stays `v0_0_3_alpha`, the service
+    # users stay as they are, no reindex is needed and no `api` rebuild is
+    # needed. Rolling back is this line and the `init` one alone.
+    #
+    # The correctness fix is worth knowing about here because it is the one
+    # thing in the release that changes an answer: a record updated into a match
+    # inside its own transaction was missing from a full-text read served by an
+    # index. The site publishes inside a transaction, so this is a fix the site
+    # actually wanted.
+    #
+    # Verified before the switch rather than after: the store was backed up, a
+    # copy was opened cold under 0.0.5-alpha, and its pages and search answers
+    # were compared against the running node's.
+    #
+    # Moved to 0.0.6-beta on 2026-09-08. Same kind of move again — an upgrade
+    # **in place**, so the namespace stays `v0_0_3_alpha`, the service users stay
+    # as they are, no reindex is needed and no `api` rebuild is needed. Rolling
+    # back is this line and the `init` one alone.
+    #
+    # That release is the vault engine, and everything it adds is an addition:
+    # `DEFINE VAULT`, `REVEAL`, `UNSEAL`, `INFO FOR AUDIT`, `RECIPIENTS OF`, and
+    # a field name that may be quoted. Nothing this site writes or reads changes
+    # meaning, and no on-disk format moved.
+    #
+    # The suffix went from `alpha` to `beta` with this release. That is a naming
+    # change and not a compatibility promise: versions before 1.0 still promise
+    # nothing across a format change, which is exactly why this comment exists.
+    #
+    # Verified before the switch, on a cold copy, and by comparison rather than
+    # by inspection: all 46 page records came back **byte-identical** under both
+    # engines (sha256 `e57c016b…` on each), and all four search shapes the site
+    # serves — `MATCHES`, `MATCHES PREFIX`, `MATCHES FUZZY` and a second plain
+    # term — returned identical record sets, all still answered via index. The
+    # reader account authenticated against the copy, which is what proves the
+    # user catalog survived; `init` answering `ok` would have proved nothing.
+    #
+    # The PREFIX and FUZZY rows are not ceremony. W88 measured a store that
+    # opened fine under a newer engine and answered both with no records and no
+    # error, because the term dictionary the operators need had never been
+    # written. A bare `image:` bump comes up green through exactly that.
+    #
+    # Moved to 0.1.1-beta on 2026-09-11. An upgrade **in place** again: the
+    # namespace stays `v0_0_3_alpha`, the service users stay as they are, no
+    # reindex is needed and no `api` rebuild is needed. Rolling back is this
+    # line and the `init` one alone.
+    #
+    # That release is additive — `UPDATE … WHERE` as a compare-and-set, the two
+    # clauses `DEFINE QUEUE` lacked, a record release naming its consumer — plus
+    # two correctness fixes. Neither fix is on a path this site takes: one is a
+    # queue write that could drop a hold, and this site declares no queue; the
+    # other is a file route that could delete a record out of an ordinary table,
+    # and this site serves no files. So the reason to move is currency rather
+    # than need — worth saying out loud, because "nothing here changes" is
+    # exactly the thought that skips the verification below.
+    #
+    # Moved to 0.2.1-beta on 2026-09-16, skipping 0.2.0-beta. Two releases in one
+    # step, so it was verified on a COPY of the real store rather than on a
+    # replay: a replay writes in the new format and therefore cannot test the one
+    # thing at risk, which is the new engine opening the OLD bytes. The node was
+    # stopped for the copy (never `cp -a` a running LSM store), the site was back
+    # up inside a minute, and the copy was opened under 0.2.1-beta beside the
+    # live 0.1.1-beta with the SAME script against both:
+    #
+    #   pages / MATCHES / PREFIX / FUZZY — live [2,5,5,5], copy [2,5,5,5]
+    #
+    # Every figure non-zero, which matters as much as their agreeing: the first
+    # cut of this check asked for the field `body`, which does not exist, and
+    # both sides answered 0 — a comparison that agrees because neither side can
+    # answer proves nothing. The reader account signed in against the copy, which
+    # is what proves the user catalog survived; `init` answering `ok` would have
+    # proved nothing (a catalog name is unique across the STORE and every
+    # definition carries `IF NOT EXISTS`).
+    #
+    # The namespace stays `v0_0_3_alpha` and no reindex was needed — the W88 trap
+    # is exactly what the PREFIX and FUZZY rows above are there to catch, and
+    # they answered. Rolling back is this line and the `init` one alone; the
+    # backup taken first is /var/backups/docs/20260916T135757Z.tessarilog, 3134
+    # records, sequences 1..=3134, checked.
+    #
+    # # 0.2.2-beta -> 0.3.0-beta, 2026-09-17
+    #
+    # Checked differently from the move above, and more cheaply. The store was
+    # stopped for one second, copied to /var/lib/docs-probe, and the node
+    # restarted; the copy was then opened by 0.3.0-beta and asked for a whole
+    # backup, which reads EVERY record in EVERY namespace. It answered 3398
+    # records across 2 logs — store 1..=3134, namespace 4 database 3 1..=264 —
+    # which is what the running 0.2.2-beta node had answered minutes earlier.
+    #
+    # Then the two files were compared rather than their summaries: 6022288
+    # bytes each, and `cmp -l` reports **exactly two differing bytes**, at
+    # offsets 0x13 and 0x17. Those are the writer's own version triple in the
+    # header — 0.2.2 against 0.3.0 — so all 3398 records are byte-identical.
+    # A record count that agrees can agree wrongly; two bytes cannot.
+    #
+    # The backup taken first is /var/backups/docs/20260917T120108Z.tessarilog,
+    # 3398 records, checked by the engine that wrote it. Rolling back is this
+    # line and the `init` one.
+    #
+    # 0.4.0-beta -> 0.9.0-beta (2026-09-26): backup
+    # /var/backups/docs/20260926T125428Z.tessarilog (3732 records, verified); a
+    # copy of the store opened by 0.9.0-beta backed up to the same 6454564 bytes
+    # with **one** differing byte, offset 20, the writer's minor version 4 -> 9.
+    #
+    # 0.9.0-beta -> 0.10.0-beta (2026-09-28): backup
+    # /var/backups/docs/20260927T232720Z.tessarilog (7123232 bytes, verified); a
+    # copy of the store opened by 0.10.0-beta backed up to the same 7123232 bytes
+    # with **one** differing byte, offset 20, the writer's minor version 9 -> 10.
+    #
+    # 0.10.0-beta -> 0.11.0-beta (2026-09-29): backup
+    # /var/backups/docs/20260929T042948Z.tessarilog (7389545 bytes, verified); a
+    # copy of the store opened by 0.10.0-beta and by 0.11.0-beta backed up to the
+    # same 7389545 bytes with **one** differing byte, offset 20, 10 -> 11.
+    # 0.11.0-beta -> 0.12.0-beta (2026-09-29): backup
+    # /var/backups/docs/20260929T091058Z.tessarilog (7605863 bytes, verified); a
+    # copy of the store opened by 0.11.0-beta and by 0.12.0-beta backed up to the
+    # same 7605863 bytes with **one** differing byte, offset 20, 11 -> 12.
+    # 0.12.0-beta -> 0.13.0-beta (2026-09-29): backup
+    # /var/backups/docs/20260929T135822Z.tessarilog (8075375 bytes, verified); a
+    # copy of the store opened by 0.12.0-beta and by 0.13.0-beta backed up to the
+    # same 8075375 bytes with **one** differing byte, offset 20, 12 -> 13.
+    # 0.13.0-beta -> 0.13.1-beta (2026-09-29): backup
+    # /var/backups/docs/20260929T144117Z.tessarilog (8472914 bytes, verified); a
+    # copy of the store opened by 0.13.0-beta and by 0.13.1-beta backed up to the
+    # same 8472914 bytes with **one** differing byte, offset 24, 0 -> 1.
+    # 0.13.1-beta -> 0.14.0-beta (2026-09-30): backup
+    # /var/backups/docs/20260929T184643Z.tessarilog (8621481 bytes, verified); a
+    # copy of the store opened by 0.13.1-beta and by 0.14.0-beta backed up to the
+    # same 8621481 bytes with **two** differing bytes, offset 20, 13 -> 14, and
+    # offset 24, 1 -> 0.
+    # 0.14.0-beta -> 0.15.0-beta (2026-09-30): backup
+    # /var/backups/docs/20260929T222505Z.tessarilog (9160393 bytes, verified); a
+    # copy of the store opened by 0.14.0-beta and by 0.15.0-beta backed up to the
+    # same 9160393 bytes with **one** differing byte, offset 20, 14 -> 15.
+    # 0.15.0-beta -> 0.16.0-beta (2026-09-30): backup
+    # /var/backups/docs/20260930T093112Z.tessarilog (9462105 bytes, verified); a
+    # copy of the store opened by 0.15.0-beta and by 0.16.0-beta backed up to the
+    # same 9462105 bytes with **one** differing byte, offset 20, 15 -> 16.
+    # 0.16.0-beta -> 0.17.1-beta (2026-10-01): backup
+    # /var/backups/docs/20260930T184339Z.tessarilog (9696227 bytes, verified); a
+    # copy of the store opened by 0.16.0-beta and by 0.17.1-beta backed up to the
+    # same 9696227 bytes with **two** differing bytes, offset 20, 16 -> 17, and
+    # offset 24, 0 -> 1. 0.17.0-beta was never deployed here.
+    # 0.17.1-beta -> 0.18.1-beta (2026-10-01): backup
+    # /var/backups/docs/20261001T023751Z.tessarilog (10243393 bytes, verified)
+    # did NOT restore under 0.17.1-beta (log gap: its older records sit in the
+    # store log), which is the defect 0.18.1-beta fixes; a build of that fix
+    # restored it into an empty store with page, section, fragment and account
+    # answers equal to the store's. A copy backed up by 0.17.1-beta and by the
+    # fix to the same 10243722 bytes with **two** differing bytes, offset 20,
+    # 17 -> 18, and offset 24, 1 -> 0 (the fix build still said 0.18.0); its
+    # snapshot (4145665 bytes) restored to the same answers. 0.18.0-beta was
+    # never deployed here.
+    # 0.18.1-beta -> 0.19.0-beta (2026-10-01): snapshot
+    # /var/backups/docs/20261001T082207Z.tessarisnap (4158781 bytes, 1902
+    # records at version 5877) taken by the live 0.18.1-beta node, verified and
+    # restored by 0.19.0-beta; served on this network, the copy answered page,
+    # section, fragment and account byte-equal to the live node through one
+    # 0.19.0-beta client.
+    # 0.19.0-beta -> 0.20.0-beta (2026-10-01): snapshot
+    # /var/backups/docs/20261001T164913Z.tessarisnap (4180302 bytes, 1904
+    # records at version 6112) taken by the live 0.19.0-beta node, verified and
+    # restored by 0.20.0-beta; served on this network, the copy answered page,
+    # section, fragment and account byte-equal to the live node through one
+    # 0.20.0-beta client.
+    # 0.20.0-beta -> 0.20.1-beta (2026-10-02): snapshot
+    # /var/backups/docs/20261001T190512Z.tessarisnap (4265861 bytes, 1923
+    # records at version 6510) taken by the live 0.20.0-beta node, verified and
+    # restored by 0.20.1-beta; page, section, fragment and account byte-equal to
+    # the live node; the new API then applied its search schema as the editor,
+    # ingested 69 pages / 670 fragments into the copy and answered search with
+    # snippets and type-ahead.
+    # 0.20.1-beta -> 0.21.0-beta (2026-10-03): snapshot
+    # /var/backups/docs/20261002T212727Z.tessarisnap (4308519 bytes, 1936
+    # records at version 7455) taken by the live 0.20.1-beta node, verified and
+    # restored by 0.21.0-beta; served on this network, the copy answered page,
+    # section, fragment, account and holds byte-equal to the live node through
+    # one 0.21.0-beta client, and a MATCHES read via its index.
+    # 0.21.0-beta -> 0.22.0-beta (2026-10-03): snapshot
+    # /var/backups/docs/20261003T043244Z.tessarisnap (4422557 bytes, 1971
+    # records at version 7895) taken by the live 0.21.0-beta node, verified and
+    # restored by 0.22.0-beta; the copy answered page, section, fragment,
+    # account and holds byte-equal to the live node through one 0.22.0-beta
+    # client, and a MATCHES read via its index.
+    # 0.23.0-beta -> 0.24.0-beta (2026-10-04): snapshot 20261003T182825Z by the
+    # live 0.23 node (1988 records at 8323) verified and restored by 0.24.0-beta;
+    # page, section, fragment, account and holds byte-equal through one
+    # 0.24.0-beta client; MATCHES via index on the copy.
+    # 0.35.2 -> 0.35.3 (2026-10-16): snapshot 20261016T100058Z
+    # (42 364 811 bytes) verified and restored by 0.35.3; page, section,
+    # fragment, account and holds byte-equal through one 0.35.3 client
+    # (86/10/813/1/85); MATCHES via index on the copy.
+    # 0.35.1 -> 0.35.2 (2026-10-16): snapshot 20261016T075227Z
+    # (39 572 130 bytes) verified and restored by 0.35.2; page, section,
+    # fragment, account and holds byte-equal through one 0.35.2 client
+    # (86/10/813/1/85); MATCHES via index on the copy.
+    # 0.35.0 -> 0.35.1 (2026-10-16): snapshot 20261016T054827Z
+    # (36 784 949 bytes) verified and restored by 0.35.1; page, section,
+    # fragment, account and holds byte-equal through one 0.35.1 client
+    # (86/10/813/1/85); MATCHES via index on the copy.
+    # 0.34.4 -> 0.35.0 (2026-10-16): snapshot 20261016T045652Z
+    # (33 969 546 bytes) verified and restored by 0.35.0; page, section,
+    # fragment, account and holds byte-equal through one 0.35.0 client
+    # (86/10/807/1/85); MATCHES via index on the copy.
+    # 0.34.3-beta -> 0.34.4 (2026-10-16): snapshot 20261016T023831Z
+    # (31 213 869 bytes) verified and restored by 0.34.4; page, section,
+    # fragment, account and holds byte-equal through one 0.34.4 client
+    # (86/10/807/1/85); MATCHES via index on the copy.
+    # 0.34.2-beta -> 0.34.3-beta (2026-10-16): snapshot 20261016T002928Z
+    # (28 457 976 bytes) verified and restored by 0.34.3-beta; page, section,
+    # fragment, account and holds byte-equal through one 0.34.3-beta client
+    # (86/10/807/1/85); MATCHES via index on the copy.
+    # 0.34.1-beta -> 0.34.2-beta (2026-10-16): snapshot 20261015T174152Z
+    # (25 702 253 bytes) verified and restored by 0.34.2-beta; page, section,
+    # fragment, account and holds byte-equal through one 0.34.2-beta client
+    # (86/10/807/1/85); MATCHES via index on the copy.
+    # 0.34.0-beta -> 0.34.1-beta (2026-10-15): snapshot 20261015T153855Z
+    # (22 947 217 bytes, written by the live 0.34.0 node) verified and restored
+    # by 0.34.1-beta; page, section, fragment, account and holds byte-equal
+    # through one 0.34.1-beta client (76/9/764/1/75); MATCHES via index on the copy.
+    # 0.33.4-beta -> 0.34.0-beta (2026-10-14): snapshot 20261014T050252Z
+    # (20 305 656 bytes, written by the live 0.33.4 node with BACKUP STATE TO)
+    # verified and restored by 0.34.0-beta; page, section, fragment, account
+    # and holds byte-equal through one 0.34.0-beta client (76/9/763/1/75);
+    # MATCHES via index on the copy. Store unfinalized: stays format 7.
+    # 0.33.3-beta -> 0.33.4-beta (2026-10-09): snapshot 20261008T181730Z
+    # (17 668 145 bytes, written by the live 0.33.3 node with BACKUP STATE TO)
+    # verified and restored by 0.33.4-beta (6819 records at 15766); page,
+    # section, fragment, account and holds byte-equal through one 0.33.4-beta
+    # client (76/9/759/1/75); MATCHES via index on the copy. Store unfinalized.
+    # 0.33.2-beta -> 0.33.3-beta (2026-10-08): snapshot 20261008T084333Z by the
+    # live 0.33.2 node verified and restored by 0.33.3-beta; page, section,
+    # fragment, account and holds byte-equal through one 0.33.3-beta client
+    # (76/9/759/1/75); MATCHES via index on the copy. The store stays unfinalized.
+    # 0.33.1-beta -> 0.33.2-beta (2026-10-08): snapshot 20261008T000147Z by the
+    # live 0.33.1 node verified and restored by 0.33.2-beta; page, section,
+    # fragment, account and holds byte-equal through one 0.33.2-beta client
+    # (76/9/759/1/75); MATCHES via index on the copy. The store stays unfinalized.
+    # 0.33.0-beta -> 0.33.1-beta (2026-10-07): snapshot 20261007T083422Z by the
+    # live 0.33.0 node verified and restored by 0.33.1-beta; page, section,
+    # fragment, account and holds byte-equal through one 0.33.1-beta client
+    # (76/9/754/1/75); MATCHES via index on the copy. The store stays unfinalized.
+    # 0.32.0-beta -> 0.33.0-beta (2026-10-07): snapshot 20261007T064901Z by the
+    # live 0.32 node verified and restored by 0.33.0-beta; page, section,
+    # fragment, account and holds byte-equal through one 0.33.0-beta client
+    # (76/9/748/1/75); MATCHES via index on the copy. The store is not
+    # finalized to format 7, so 0.32.0-beta still opens it.
+    # 0.31.2-beta -> 0.32.0-beta (2026-10-07): snapshot 20261007T004555Z by the
+    # live 0.31.2 node verified and restored by 0.32.0-beta; page, section,
+    # fragment, account and holds byte-equal through one 0.32.0-beta client
+    # (76/9/748/1/75); MATCHES via index on the copy. No format change.
+    # 0.31.1-beta -> 0.31.2-beta (2026-10-07): snapshot 20261006T195508Z by the
+    # live 0.31.1 node verified and restored by 0.31.2-beta; page, section,
+    # fragment, account and holds byte-equal through one 0.31.2-beta client
+    # (76/9/748/1/75); MATCHES via index on the copy. No format change.
+    # 0.31.0-beta -> 0.31.1-beta (2026-10-06): snapshot 20261006T151121Z by the
+    # live 0.31.0 node verified and restored by 0.31.1-beta; page, section,
+    # fragment, account and holds byte-equal through one 0.31.1-beta client
+    # (76/9/748/1/75); MATCHES via index on the copy. No format change.
+    # 0.30.0-beta -> 0.31.0-beta (2026-10-05): snapshot 20261005T095738Z by the
+    # live 0.30 node verified and restored by 0.31.0-beta; page, section,
+    # fragment, account and holds byte-equal through one 0.31.0-beta client;
+    # MATCHES via index on the copy. INFO FOR STORE on the live node answers
+    # format 5 / writes 6: the store predates 0.28 and is left unfinalized, so
+    # the 0.30.0-beta pin can still come back; nothing here needs format 6.
+    # 0.29.0-beta -> 0.30.0-beta (2026-10-05): snapshot 20261005T080630Z by the
+    # live 0.29 node verified and restored by 0.30.0-beta; page, section,
+    # fragment, account and holds byte-equal through one 0.30.0-beta client;
+    # MATCHES via index on the copy. The release adds a refusal class; the api's
+    # client predates protocol 1.3 and keeps receiving words only.
+    # 0.28.0-beta -> 0.29.0-beta (2026-10-05): snapshot 20261005T061028Z by the
+    # live 0.28 node (2022 records at 9354) verified and restored by
+    # 0.29.0-beta; page, section, fragment, account and holds byte-equal
+    # through one 0.29.0-beta client; MATCHES via index on the copy. The
+    # release adds browser headers and key-file modes; this node has no key.
+    # 0.27.2-beta -> 0.28.0-beta (2026-10-05): snapshot 20261005T020803Z by the
+    # live 0.27.2 node verified and restored by 0.28.0-beta; page, section,
+    # fragment, account and holds byte-equal through one 0.28.0-beta client;
+    # MATCHES via index on the copy. The store defines no containment index,
+    # so it keeps on-disk format 5 and 0.27.2 can open it again.
+    # 0.27.1-beta -> 0.27.2-beta (2026-10-05): snapshot 20261005T002048Z by the
+    # live 0.27.1 node verified and restored by 0.27.2-beta; page, section,
+    # fragment, account and holds byte-equal through one 0.27.2-beta client;
+    # MATCHES via index on the copy, no rebuild needed.
+    # 0.27.0-beta -> 0.27.1-beta (2026-10-05): snapshot 20261004T180209Z by the
+    # live 0.27.0 node (2020 records at 9089) verified and restored by 0.27.1-beta;
+    # page, section, fragment, account and holds byte-equal through one
+    # 0.27.1-beta client; MATCHES via index on the copy, no rebuild needed.
+    # 0.26.0-beta -> 0.27.0-beta (2026-10-04): snapshot 20261004T121547Z by the
+    # live 0.26 node (2020 records at 8992) verified and restored by 0.27.0-beta;
+    # page, section, fragment, account and holds byte-equal through one
+    # 0.27.0-beta client; MATCHES via index on the copy, no rebuild needed.
+    # 0.25.0-beta -> 0.26.0-beta (2026-10-04): snapshot 20261004T095541Z by the
+    # live 0.25 node (2019 records at 8774) verified and restored by 0.26.0-beta;
+    # page, section, fragment, account and holds byte-equal through one
+    # 0.26.0-beta client. Its search indexes recorded no tokenizer generation,
+    # so after the move `by_text` is rebuilt and `site` and `words` defined
+    # again (rehearsed on the copy: notes gone, tokenizer 2, definitions equal).
+    # 0.24.0-beta -> 0.25.0-beta (2026-10-04): snapshot 20261004T044242Z by the
+    # live 0.24 node (2016 records at 8598) verified and restored by 0.25.0-beta;
+    # page, section, fragment, account and holds byte-equal through one
+    # 0.25.0-beta client; MATCHES via index on the copy.
+    # 0.22.0-beta -> 0.23.0-beta (2026-10-03): snapshot
+    # /var/backups/docs/20261003T062035Z.tessarisnap (4497575 bytes, 1986
+    # records at version 8212) taken by the live 0.22.0-beta node, verified and
+    # restored by 0.23.0-beta; page, section, fragment, account and holds
+    # byte-equal to the live node through one 0.23.0-beta client, and a MATCHES
+    # read via its index. This node is given no client certificate on purpose:
+    # its clients are on the store network, which nothing outside reaches.
+    image: tessaridb/tessaridb:0.39.6
+    environment:
+      TESSARIDB_STORE: /var/lib/tessaridb/store
+      # Every interface, because the API is in a different container. That is
+      # the one thing this split widens: this node is given no certificate, so
+      # its clients are served in the clear, and the network it is on is
+      # declared `internal` below.
+      TESSARIDB_ADDRESS: 0.0.0.0:7654
+      # HTTP on the internal network and nowhere else. It exists so the image's
+      # own health check can ask the node `/health` — which the node answers
+      # from the store — rather than ask the kernel whether a port is open. No
+      # `ports` entry below publishes it.
+      TESSARIDB_HTTP_ADDRESS: 0.0.0.0:8000
+      # Declares the first user on a **fresh** store and closes it, once. On a
+      # store that already has users the node says so and changes nothing, so
+      # this can sit here on every restart forever. It is not a password reset.
+      #
+      # The user it declares is store-wide, which is what the `init` service
+      # below then needs in order to declare a namespace.
+      TESSARIDB_INITIAL_USER: ${DOCS_OWNER_USER:-owner}
+      TESSARIDB_INITIAL_PASSWORD: ${DOCS_OWNER_PASSWORD:?set it in deploy/.env}
+      TESSARIDB_LOG: ${RUST_LOG:-info}
+    volumes:
+      # The host folder. Everything the site is lives here. Its ownership must
+      # be the image's uid 10001: a bind mount presents the host's ownership and
+      # shadows the image's own, and the symptom of getting it wrong is a
+      # database that cannot open its store.
+      - ${DOCS_STORE_PATH:-./store}:/var/lib/tessaridb
+    # No `ports`. Nothing outside the store network reaches the database.
+    expose:
+      - "7654"
+    networks:
+      - store
+    restart: unless-stopped
+    logging: *logging
+
+  # ── the fresh-store bootstrap, which is not part of `up` ───────────────────
+  #
+  # The same image, run as a client rather than as a node — one binary, so the
+  # thing that serves the store is the thing that talks to it. It declares the
+  # namespace, the database and the two service accounts, and says nothing the
+  # second time.
+  #
+  # Behind a profile on purpose, so a routine `up` never runs it. It has to
+  # succeed exactly once, on a store that has just been created, and a service
+  # that must not fail is a poor thing to put in the restart path of a site that
+  # is already serving. Run it by hand:
+  #
+  #   docker compose -f deploy/compose.yaml --env-file deploy/.env \
+  #     --profile init run --rm init
+  #
+  # **Moving `DOCS_NAMESPACE` means renaming the two service users as well.**
+  # Their names are unique across the store and both statements below carry
+  # `IF NOT EXISTS`, so re-running this against a new namespace answers `ok` and
+  # leaves them scoped to the old one — after which the API is refused with
+  # *"… is outside this user's namespace and database"*. Name them after the
+  # namespace (`reader_v0_0_3`) and the previous namespace also stays servable,
+  # which is what makes pointing `DOCS_NAMESPACE` back an actual rollback.
+  #
+  # **The reader is store-wide, the editor is not.** The site keeps each
+  # released version of the documentation in a namespace of its own (`docs
+  # archive`, below), and the public read path reads every one of them, so the
+  # reader is declared without `ON` — a `viewer` of the whole store, which may
+  # read any namespace and write none. The editor stays confined to the live
+  # namespace: an archive is never edited through the API. A store whose reader
+  # was declared `ON` one namespace keeps it; name a new reader
+  # (`DOCS_READER_USER=reader_all`) and run this again.
+  #
+  # ── keeping a release: `docs archive` ─────────────────────────────────────
+  #
+  # At each release, after its pages are published, the live namespace is kept
+  # as that release — copied into a namespace of its own, compared page by page,
+  # and listed so the site's version picker offers it at `/v/<version>/`:
+  #
+  #   docker compose -f deploy/compose.yaml --env-file deploy/.env run --rm \
+  #     -e DOCS_USER="$owner" -e DOCS_PASSWORD="$owner_password" \
+  #     api docs archive --as 0.32.0-beta
+  #
+  # It runs as the store-wide owner because it declares a namespace. Archiving a
+  # version again replaces what it held.
+  #
+  # It needs the owner declared by the `db` service above, and that owner has to
+  # be **store-wide** — `DEFINE NAMESPACE` has no tenancy to check because its
+  # subject is the store itself, so an owner scoped to one database is refused.
+  # `TESSARIDB_INITIAL_USER` declares a store-wide one; a store bootstrapped by
+  # the older `start-db.sh` may not have, and this will say so rather than
+  # pretend.
+  init:
+    profiles: ["init"]
+    # Kept equal to the `db` image above, deliberately: this runs as a client
+    # against that node, and a client from a different release is a difference
+    # nobody planned for on the one path that declares accounts.
+    image: tessaridb/tessaridb:0.39.6
+    environment:
+      TESSARIDB_PASSWORD: ${DOCS_OWNER_PASSWORD:?set it in deploy/.env}
+    command:
+      - --at
+      - db:7654
+      - --user
+      - ${DOCS_OWNER_USER:-owner}
+      - -e
+      - |
+        DEFINE NAMESPACE IF NOT EXISTS ${DOCS_NAMESPACE:-v0_0_3_alpha};
+        USE NAMESPACE ${DOCS_NAMESPACE:-v0_0_3_alpha};
+        DEFINE DATABASE IF NOT EXISTS docs;
+        USE DATABASE docs;
+        DEFINE USER IF NOT EXISTS ${DOCS_READER_USER:-reader} ROLE viewer PASSWORD '${DOCS_READER_PASSWORD:?set it in deploy/.env}';
+        DEFINE USER IF NOT EXISTS ${DOCS_EDITOR_USER:-editor} ON ${DOCS_NAMESPACE:-v0_0_3_alpha}.docs ROLE editor PASSWORD '${DOCS_EDITOR_PASSWORD:?set it in deploy/.env}';
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - store
+    restart: "no"
+    logging: *logging
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+      # No `ssh:` any more. The one git dependency is `tessaridb-client`, whose
+      # repository is public (checked 2026-09-02: an anonymous fetch answers
+      # 200), so the build clones it over HTTPS and needs no key. It used to
+      # forward an agent because that repository was private and because the
+      # build rewrote every GitHub URL to SSH; both are gone.
+    ports:
+      # Loopback only, and for the same reason the front end binds loopback: the
+      # public edge is the TLS terminator on the host, and this is what it
+      # proxies to. Binding every interface would publish a plaintext copy of
+      # the API beside the TLS one, on a port anybody can reach, and every rule
+      # the edge applies — the rate limit on sign-in, the body cap — would be
+      # bypassable by asking the other door.
+      #
+      # Docker writes its own firewall rules ahead of ufw's, so this prefix is a
+      # control and not a preference.
+      - "${DOCS_API_BIND:-127.0.0.1:8080}:8080"
+    environment:
+      # The service name, not loopback: the database is a different container.
+      TESSARIDB_ADDRESS: db:7654
+      DOCS_BIND: 0.0.0.0:8080
+      DOCS_NAMESPACE: ${DOCS_NAMESPACE:-v0_0_3_alpha}
+      # Two identities, and the difference is the point. Writes run as the
+      # editor; public reads run as the reader, which is a `viewer`, so a write
+      # attempted on the read path is refused by the store rather than by this
+      # server's routing. The reader is store-wide so that it can read the
+      # archived versions too — see `init`.
+      DOCS_USER: ${DOCS_EDITOR_USER:-editor}
+      DOCS_PASSWORD: ${DOCS_EDITOR_PASSWORD:?set it in deploy/.env}
+      DOCS_READER_USER: ${DOCS_READER_USER:-reader}
+      DOCS_READER_PASSWORD: ${DOCS_READER_PASSWORD:?set it in deploy/.env}
+      # The first person who may edit. Seeded into the API's own `account` table
+      # on every start, so changing it here changes it in the store. This is not
+      # a database user: it buys a day-long token, and the token is what the
+      # write routes accept. Left unset, nothing is seeded and only accounts
+      # already in the store can sign in.
+      DOCS_ADMIN_USER: ${DOCS_ADMIN_USER:-}
+      DOCS_ADMIN_PASSWORD: ${DOCS_ADMIN_PASSWORD:-}
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      db:
+        # Waits for the store to be listening *and* to have declared its
+        # accounts. Without the second half the API could connect to an open
+        # store and be refused a moment later, when the owner's declaration
+        # closes it.
+        condition: service_healthy
+    # No `ports`. The API is reachable only from the front end's container and
+    # from the store network. Publishing 8080 would put it on the host's network,
+    # where a token — and, at /api/session, a password — would travel in the
+    # clear; do it only deliberately, and only behind something that terminates
+    # TLS.
+    expose:
+      - "8080"
+    networks:
+      - store
+      - edge
+    restart: unless-stopped
+    logging: *logging
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+    environment:
+      DOCS_API: http://api:8080
+    ports:
+      # Loopback by default. The public edge is a TLS terminator on the host,
+      # which is what holds the certificate and what 80 and 443 reach; binding
+      # this to every interface would publish an HTTP origin beside it that
+      # answers on the same name without one, and nothing would report that.
+      # Docker writes its own firewall rules ahead of ufw's, so this prefix is a
+      # control and not a preference — widen it and ufw will keep saying deny.
+      - "${DOCS_WEB_BIND:-127.0.0.1:3000}:3000"
+    depends_on:
+      api:
+        # The API's health route answers only once it can reach the store, so
+        # this waits for the whole chain. Without it the front end's first
+        # requests land while the store is still opening and the reader sees an
+        # empty tree that a refresh fixes — the kind of fault nobody reports.
+        condition: service_healthy
+    networks:
+      - edge
+    restart: unless-stopped
+    logging: *logging
+
+networks:
+  # The database's network. `internal` because nothing on it has any reason to
+  # reach the internet, and because an unencrypted database protocol should be
+  # on as small a network as it can be.
+  store:
+    internal: true
+  # Where the front end's published port lives. Not internal: publishing a port
+  # onto an internal network does not work.
+  edge: {}

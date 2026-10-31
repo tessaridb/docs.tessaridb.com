@@ -1,0 +1,91 @@
+# The site's API, and nothing else.
+#
+# It carries no engine binary and builds no engine: the database is its own
+# image (`Dockerfile.db`), reached over the compose network. That is what keeps
+# this image buildable in a couple of minutes while the database image is
+# built and published on its own.
+#
+# There is no start script. Everything this needs — the node's address, the
+# namespace, the bind address, and the two identities it signs in as — arrives
+# through the environment, so the container runs one process and Docker does the
+# supervising that a shell used to do badly.
+
+# ── build ───────────────────────────────────────────────────────────────────
+FROM rust:1.98-slim-bookworm AS build
+
+# `git` because the client SDK is a git dependency and cargo is told to fetch
+# with the CLI (see .cargo/config.toml).
+#
+# There is no `openssh-client` and no forwarded agent any more. This build used
+# to install one, write a `known_hosts`, and rewrite every `https://github.com/`
+# URL to SSH, because `TessariDB-sdk-rust` was private and the fetch had to be
+# authenticated. That repository is public now — checked 2026-09-02, an
+# anonymous request answers 200 — so the lockfile's own HTTPS URL is fetched as
+# written, and a deploy needs no key at all.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# The anonymous fetch of a **public** repository intermittently fails from this
+# host with `could not read Username for 'https://github.com'`, followed by
+# `expected flush after ref listing`. Measured 2026-09-02: `curl` of the same
+# `info/refs?service=git-upload-pack` answers `200` every time, and git's own
+# trace shows GitHub answering `HTTP/2 200` with the right content type — so it
+# is neither authorization nor DNS, and it is not reproducible on demand. A
+# retry a minute later succeeds.
+#
+# This is named here because the message is misleading in a specific and
+# expensive way: it reads exactly like a private repository refusing an
+# anonymous fetch, and that is what the previous version of this file concluded.
+# It installed `openssh-client`, wrote a `known_hosts`, forwarded an agent and
+# rewrote every GitHub URL to SSH — and that requirement then propagated into
+# `compose.yaml` and into the runbook's `ssh -A`. The repository was public and
+# none of it was needed.
+#
+# Cargo already retries the fetch three times. **If this build fails there,
+# run it again.**
+#
+# Protocol v1 is set because it was the first thing that worked while the flake
+# was happening; it is not established that it is the reason, and it costs
+# nothing to leave.
+RUN git config --global protocol.version 1
+
+WORKDIR /build
+COPY Cargo.toml Cargo.lock ./
+COPY .cargo ./.cargo
+COPY crates ./crates
+RUN cargo build --release --workspace --locked
+
+# ── run ─────────────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim
+
+# `curl` for the health check below. The uid matches the database image's, which
+# costs nothing and means the two never disagree about who owns what if a future
+# change hands them a shared path.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates tini curl \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --uid 10001 --home /srv docs
+
+COPY --from=build /build/target/release/docs /usr/local/bin/docs
+
+USER docs
+WORKDIR /srv
+ENV TESSARIDB_ADDRESS=db:7654 \
+    DOCS_BIND=0.0.0.0:8080 \
+    DOCS_NAMESPACE=v0_0_1_alpha \
+    RUST_LOG=info
+
+EXPOSE 8080
+
+# tini even for one process, because that process is PID 1 — and PID 1 does not
+# receive a signal it has no handler for. Without it `docker stop` would wait
+# out its grace period and then kill this rather than stop it.
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/usr/local/bin/docs", "serve"]
+
+# Answers only if it can reach the store and sign in, so this is the check that
+# proves the pair actually talk — the database's own check can only prove that
+# it is listening.
+HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8080/api/health || exit 1

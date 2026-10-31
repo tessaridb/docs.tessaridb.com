@@ -4,18 +4,13 @@
 
 # docs.tessaridb.com
 
-**The documentation site for [TessariDB](https://github.com/TessariDB/TessariDB)
+**The documentation site for [TessariDB](https://github.com/tessaridb/tessaridb)
 — and the first thing built on it.**
 
-[![status](https://img.shields.io/badge/status-planned-9A93C4?style=flat-square)](#status)
+[![status](https://img.shields.io/badge/status-in%20development-9A93C4?style=flat-square)](#status)
 [![licence](https://img.shields.io/badge/licence-Apache--2.0-6B5FD1?style=flat-square)](LICENSE)
 
 </div>
-
-> [!WARNING]
-> **Nothing here is built yet.** The repository holds the decided shape of the
-> site and no engine code. It is published early so that the design is on the
-> record before the first line is written. See [**Status**](#status).
 
 ---
 
@@ -30,29 +25,169 @@ which makes the site both the documentation for the database and a working
 demonstration of it.
 
 That is the point of building it this way. A search box that returns the right
-page in a few milliseconds, over content the same store holds as records, is a
-more honest claim about the engine than any benchmark table.
+passage over content the same store holds as records is a more honest claim
+about the engine than any benchmark table.
 
 ## Shape
 
 | | |
 |---|---|
 | **Engine** | Rust — a small HTTP server, not a static generator |
-| **Content** | Markdown in `content/`, ingested into TessariDB as records |
-| **Search** | TessariDB full-text: per-field analyzer, term index, ranked results |
-| **Navigation** | the section tree is a graph in the store, not a hand-kept sidebar file |
-| **Versions** | a namespace per released version, so the whole doc set is versioned the way the database is |
-| **Deploy** | one binary and one store |
+| **Content** | records in TessariDB, written through the API. Not in this repository |
+| **Search** | TessariDB `DEFINE SEARCH`: title, heading and passage weighted as one document (BM25F), the store's snippet window, type-ahead from `COMPLETE` |
+| **Navigation** | the section tree is a graph in the store, walked with `RELATE` edges |
+| **Products** | TessariDB at the plain URLs; TessariDB S3, Agent Memory, TessariKV, TessariDB OAuth and TessariDB Vault each under its own section — `/s3`, `/am`, `/kv`, `/oauth`, `/vault` — with its own tree, search and releases, and a switcher between them |
+| **Versions** | each product's releases kept as databases in that product's namespace (`db`, `s3`, `am`, `kv`, `oauth`, `vault`) and served under its own `/v/<version>/` — `/v/0.34.0/…` for the engine, `/kv/v/0.0.1/…` for TessariKV — each with its own tree and search index; the newest is the live site |
+| **Front end** | Next.js, server-rendered per request. It holds no content and never talks to the store |
+| **Deploy** | three containers — database, API, front end — and a folder on the host |
+
+## Running it
+
+Three passwords, then one command.
+
+```sh
+cp deploy/.env.example deploy/.env    # set the three passwords
+docker compose -f deploy/compose.yaml --env-file deploy/.env up --build
+```
+
+The site is then on <http://localhost:3000>. A fresh store declares its three
+accounts and applies the schema on the first start, and comes up with no pages;
+they are written through the API. Every start after that reads what is there.
+
+### Without containers
+
+```sh
+tessaridb /tmp/store --serve 127.0.0.1:7654    # a node
+cargo run -p docs-cli -- serve                 # the API, on :8080
+cd frontend && DOCS_API=http://127.0.0.1:8080 npm run dev
+```
+
+### The public edge
+
+Neither container publishes a port to the world: the front end binds loopback
+and the API is only on the compose network. Something in front terminates TLS
+and proxies to `127.0.0.1:3000`, and the nginx that does it here is in
+[`deploy/nginx/`](deploy/nginx) rather than only on the host — an edge that
+exists nowhere but on the machine is an edge that a rebuild loses.
+
+## Who owns the content
+
+**The store does**, and it is the only thing that does. The pages are records; a
+deployment ships the schema, the accounts and no corpus, and every page arrives
+through the API afterwards.
+
+There is still a way to write a tree of Markdown in bulk, for drafting and for
+moving a corpus between stores. A `content/` directory — untracked, because a
+published site rebuilt out of somebody's stale checkout is exactly the failure
+this avoids — is read by two commands:
+
+```sh
+docs check         # parse the tree and report what is wrong with it. No connection.
+docs ingest        # replace what the store holds with it. Destructive. Runs beside the store.
+docs publish       # write it to a running site over the API. Says what it would do first.
+```
+
+`ingest` and `publish` do the same job from opposite sides, and the difference
+matters. `ingest` runs **beside** the store and replaces everything it holds,
+which is right for seeding an empty one and wrong for a site people edit —
+a stale checkout would delete a month of work in silence. `publish` runs
+**anywhere**, signs in over the API, writes only the pages whose rendering
+would change, and removes nothing unless asked:
+
+```sh
+export DOCS_PUBLISH_PASSWORD=…
+docs publish --to https://docs.example --user ada           # says what it would do
+docs publish --to https://docs.example --user ada --apply   # does it
+docs publish --to https://docs.example --user ada --apply --prune   # and removes
+```
+
+A page the site has and `content/` does not is **named and kept**. `--prune` is
+the only thing that deletes one, and it lists them before it does.
+
+At each release, once its pages are published, the live site is kept as that
+release:
+
+```sh
+docs archive --as 0.32.0-beta                # the engine's pages
+docs archive --project kv --as 0.0.2         # one product's section alone
+```
+
+It copies the product's part of the live site into a database of its own in
+the product's namespace (`db.v0_32_0_beta`, `kv.v0_0_2`), reads the copy back
+and compares every page and section with what it was copied from, and only then
+lists the release. Each product's version picker offers its own releases — at
+`/v/<version>/` for the engine and `/<product>/v/<version>/` for a product — and
+the header search, its suggestions and the results page search the release
+being read. Archiving a version again replaces what it held. It runs as a
+store-wide user, because it may declare a namespace.
+
+Releases kept before this layout — a namespace each, `v0_32_0_beta.docs` — are
+moved with `docs rehome`, which copies each into its product's namespace,
+compares it page by page, and points its row there. The old namespace is left
+in place to be dropped once the moved releases have been read on the site.
+
+`serve` seeds from such a tree only when the store is **empty** and one happens
+to be there. It never rebuilds a populated store, because pages are edited
+through the API and a restart that rebuilt from disk would discard those edits
+in silence.
+
+## Who may write
+
+Two questions, and they are answered in two different places.
+
+**Who is asking** is the API's question. A person signs in at `POST
+/api/session` with a name and a password and gets a token that works for a day;
+every write carries that token and nothing else. They are not a database user,
+and the database's password never travels with an edit.
+
+| what | where it lives | what it is worth if stolen |
+|---|---|---|
+| a password | `account.secret`, Argon2id | nothing recoverable in useful time |
+| a token | `token`'s record id is its **SHA-256** | nothing — the table holds no token |
+
+Guessing is bounded before it costs anything: the throttle is asked before the
+store is touched and before a hash is computed, an unknown name spends the same
+work as a wrong password so the clock cannot be asked which names exist, and the
+two refusals are worded identically for the same reason.
+
+**What may travel on this connection** stays the database's question, and that
+is what makes the first half safe to add. The store holds two service accounts
+and neither is a person:
+
+| account | role | used for |
+|---|---|---|
+| `owner` | `owner` | declaring the other two, once, on a fresh store |
+| `reader` | `viewer` | the public read path — a closed store has no anonymous access |
+| `editor` | `editor` | the connection every write runs on, after its token verified |
+
+The reading account is a `viewer` on purpose: a routing mistake that sent a
+write down the read path is still refused, by the *store*, whatever this server
+believes it is doing. An API that authenticated its own users **and** held one
+all-powerful connection would have exactly one thing between a reader and a
+write, and it would be this code.
+
+`401` means *identify yourself*; `403` means *you did, and the answer is no*.
+
+> [!WARNING]
+> The wire protocol carries no TLS, and a bearer token is a bearer token. The
+> compose file puts the database and the API on a network declared `internal`
+> and publishes only the front end. If you publish the API, put something that
+> terminates TLS in front of it.
+
+## What is true here
+
+Every query-language example on this site is lifted from the engine's
+conformance corpus — the suite that runs on every commit. An example that
+appears here is an assertion that passes, not a sketch of an intended feature.
+
+A page describing something the engine does not do yet says so at the top. There
+is no third category.
 
 ## Status
 
-**Stage: planned.** The repository exists, the shape above is decided, and no
-engine code is written yet. Nothing here works today.
-
-- ⛔ **Not started:** the HTTP server, the ingest, the search route, the theme.
-- 🚧 **Blocked on:** TessariDB's full-text engine reaching the point where a site
-  can be served from it — this site is the first thing built on the database, so
-  it follows rather than leads.
+**In development.** The workspace, the content pipeline, the store layer, the
+API with authorization, the front end and the deployment are built and run. What
+is not written yet is most of the content, and installation instructions.
 
 ## Licence
 

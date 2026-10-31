@@ -1,0 +1,263 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+
+import type { Hit } from "@/lib/api";
+import { type ProjectId, pagePath } from "@/lib/projects";
+import { excerpt } from "@/lib/excerpt";
+import { Search as SearchIcon } from "./icons";
+
+/**
+ * The search box.
+ *
+ * It calls a route handler of ours rather than the API directly, because in the
+ * deployment the API is on an internal network and only this front end is
+ * exposed. The handler is a proxy and nothing more — the ranking is the store's,
+ * and nothing here reorders what comes back.
+ *
+ * A result links to `page#anchor`, and the anchor is the one the API assigned
+ * when it rendered the page, so the reader lands on the passage that matched.
+ *
+ * It searches one product's release — the one being read: `project` and
+ * `archived` name it, and the results, the completions and "see all results"
+ * (at `searchAt`) all stay inside it.
+ */
+export function Search({
+  archived,
+  project,
+  searchAt,
+}: {
+  archived: string | null;
+  project: ProjectId;
+  searchAt: string;
+}) {
+  const [query, setQuery] = useState("");
+  const [hits, setHits] = useState<Hit[] | null>(null);
+  const [words, setWords] = useState<string[]>([]);
+  const [active, setActive] = useState(0);
+  const box = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLInputElement>(null);
+  const release = `${archived === null ? "" : `&v=${encodeURIComponent(archived)}`}&project=${project}`;
+
+  // Debounced, and every in-flight request is abandoned when a newer one
+  // starts — otherwise a slow answer for `an` can arrive after the answer for
+  // `analyzer` and replace it, showing results for a query nobody is looking at.
+  useEffect(() => {
+    const asked = query.trim();
+    if (asked.length < 2) {
+      setHits(null);
+      return;
+    }
+    const stop = new AbortController();
+    const typing = lastWord(query);
+    const timer = setTimeout(() => {
+      fetch(`/api/search?q=${encodeURIComponent(asked)}${release}`, {
+        signal: stop.signal,
+      })
+        .then((response) => (response.ok ? response.json() : []))
+        .then((found: Hit[]) => {
+          setHits(found);
+          setActive(0);
+        })
+        .catch(() => {
+          // An abort is the ordinary case here, not a failure worth reporting.
+        });
+      // The word still being typed, completed from the words the site holds.
+      // Asked only while a word is in progress: after a space it is finished.
+      if (typing.length >= 3) {
+        fetch(`/api/suggest?p=${encodeURIComponent(typing)}${release}`, {
+          signal: stop.signal,
+        })
+          .then((response) => (response.ok ? response.json() : []))
+          .then((offered: string[]) =>
+            setWords(
+              offered
+                .filter((word) => word !== typing.toLowerCase())
+                .slice(0, 5),
+            ),
+          )
+          .catch(() => {});
+      } else {
+        setWords([]);
+      }
+    }, 140);
+    return () => {
+      clearTimeout(timer);
+      stop.abort();
+    };
+  }, [query, release]);
+
+  // `/` focuses the box, the way every documentation site does — but not while
+  // the reader is already typing somewhere, which would swallow the character.
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable === true;
+      if (event.key === "/" && !typing) {
+        event.preventDefault();
+        field.current?.focus();
+      }
+      if (event.key === "Escape") {
+        setHits(null);
+        field.current?.blur();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    function onClick(event: MouseEvent) {
+      if (!box.current?.contains(event.target as globalThis.Node))
+        setHits(null);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
+  /** Where "see all results" goes, and what Enter falls through to. */
+  const everything = `${searchAt}?q=${encodeURIComponent(query.trim())}`;
+
+  function onKeyDown(event: React.KeyboardEvent) {
+    if (!hits || hits.length === 0) {
+      // With nothing in the dropdown Enter still means *search* — it goes to
+      // the page, which can say why there is nothing better than a box can.
+      if (event.key === "Enter" && query.trim().length >= 2) {
+        event.preventDefault();
+        window.location.href = everything;
+      }
+      return;
+    }
+    // One past the last hit is "see all results", so arrowing to the bottom and
+    // pressing Enter does the obvious thing rather than nothing.
+    const stops = hits.length + 1;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActive((at) => (at + 1) % stops);
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive((at) => (at - 1 + stops) % stops);
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const chosen = hits[active];
+      window.location.href = chosen ? link(archived, chosen) : everything;
+      setHits(null);
+    }
+  }
+
+  // Completions for the word being typed, as the dropdown's first row. Buttons,
+  // so Tab reaches them and Enter or a click takes one; the arrow keys stay on
+  // the results, which is what they already did.
+  const offered =
+    words.length > 0 ? (
+      <div className="suggestions" aria-label="Complete the word">
+        {words.map((word) => (
+          <button
+            key={word}
+            type="button"
+            className="suggestion"
+            onClick={() => {
+              setQuery(completed(query, word));
+              field.current?.focus();
+            }}
+          >
+            {word}
+          </button>
+        ))}
+      </div>
+    ) : null;
+
+  return (
+    <div className="search" ref={box}>
+      <div className="search-field">
+        <SearchIcon size={15} />
+        <input
+          ref={field}
+          type="search"
+          value={query}
+          placeholder="Search the documentation"
+          aria-label="Search the documentation"
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={onKeyDown}
+        />
+        <span className="search-key" aria-hidden="true">
+          /
+        </span>
+      </div>
+
+      {hits === null ? null : hits.length === 0 ? (
+        <div className="results">
+          {offered}
+          <p className="results-empty">
+            Nothing matches <strong>{query.trim()}</strong>. Terms are whole
+            words here, not fragments of them.
+          </p>
+        </div>
+      ) : (
+        <div className="results">
+          {offered}
+          <div role="listbox">
+            {hits.map((hit, at) => (
+              <Link
+                key={`${hit.page}#${hit.anchor}`}
+                href={link(archived, hit)}
+                className="result"
+                role="option"
+                aria-selected={at === active}
+                data-active={at === active}
+                onMouseEnter={() => setActive(at)}
+                onClick={() => setHits(null)}
+              >
+                <div className="result-heading">{hit.heading}</div>
+                <div className="result-where">{hit.page}</div>
+                <div className="result-text">{excerpt(hit)}</div>
+              </Link>
+            ))}
+            {/* A dropdown holds what it holds. This is the way out of it, and it
+              is a row in the list rather than a link beside it so that the
+              keyboard reaches it the same way the mouse does. */}
+            <Link
+              href={everything}
+              className="result result-all"
+              role="option"
+              aria-selected={active === hits.length}
+              data-active={active === hits.length}
+              onMouseEnter={() => setActive(hits.length)}
+              onClick={() => setHits(null)}
+            >
+              See all results for <strong>{query.trim()}</strong>
+            </Link>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The word being typed: the last one, and only while no space follows it. */
+function lastWord(query: string): string {
+  if (/\s$/.test(query)) return "";
+  return query.trim().split(/\s+/).pop() ?? "";
+}
+
+/** The query with its last word replaced by the one chosen, ready for the next. */
+function completed(query: string, word: string): string {
+  const words = query.trim().split(/\s+/);
+  words[words.length - 1] = word;
+  return `${words.join(" ")} `;
+}
+
+/** A hit's destination. The lead of a page has no anchor, so it has no hash. */
+function link(archived: string | null, hit: Hit): string {
+  return hit.anchor
+    ? `${pagePath(hit.page, archived)}#${hit.anchor}`
+    : pagePath(hit.page, archived);
+}

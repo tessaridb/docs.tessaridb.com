@@ -1,0 +1,259 @@
+# Generated. Do not edit by hand.
+# Produced by tessari-conformance's `documented` suite from FieldKind,
+# Function::ALL and FORMS. Regenerate when that suite tells you to.
+kind	any
+kind	array
+kind	bool
+kind	bytes
+kind	datetime
+kind	decimal
+kind	duration
+kind	float
+kind	geometry
+kind	int
+kind	literal union
+kind	number
+kind	object
+kind	range
+kind	record
+kind	regex
+kind	set
+kind	string
+kind	table
+kind	uuid
+function	array::append
+function	array::at
+function	array::concat
+function	array::distinct
+function	array::first
+function	array::flatten
+function	array::index_of
+function	array::join
+function	array::last
+function	array::len
+function	array::max
+function	array::min
+function	array::reverse
+function	array::slice
+function	array::sort
+function	array::sum
+function	crypto::md5
+function	crypto::sha1
+function	crypto::sha256
+function	crypto::sha512
+function	duration::from_secs
+function	encoding::base64
+function	encoding::base64_decode
+function	encoding::hex
+function	encoding::hex_decode
+function	geo::area
+function	geo::cell
+function	geo::contains
+function	geo::covered_by
+function	geo::covers
+function	geo::disjoint
+function	geo::distance
+function	geo::equals
+function	geo::intersects
+function	geo::touches
+function	geo::within
+function	json::encode
+function	json::parse
+function	math::abs
+function	math::ceil
+function	math::exp
+function	math::floor
+function	math::ln
+function	math::max
+function	math::min
+function	math::pow
+function	math::round
+function	math::sign
+function	math::sqrt
+function	math::trunc
+function	object::entries
+function	object::get
+function	object::has
+function	object::keys
+function	object::len
+function	object::merge
+function	object::values
+function	rand::uuid
+function	scores::between
+function	scores::intersect
+function	scores::range
+function	scores::rank
+function	scores::score
+function	scores::union
+function	search::explain
+function	search::highlight
+function	search::ranks
+function	search::score
+function	search::snippet
+function	search::table_name
+function	session::context
+function	set::difference
+function	set::intersect
+function	set::len
+function	set::union
+function	string::concat
+function	string::contains
+function	string::ends_with
+function	string::index_of
+function	string::len
+function	string::lines
+function	string::lower
+function	string::replace
+function	string::reverse
+function	string::slice
+function	string::split
+function	string::starts_with
+function	string::trim
+function	string::trim_end
+function	string::trim_start
+function	string::upper
+function	time::bucket
+function	time::day
+function	time::from_unix
+function	time::hour
+function	time::minute
+function	time::month
+function	time::now
+function	time::second
+function	time::unix
+function	time::year
+function	type::bool
+function	type::datetime
+function	type::float
+function	type::int
+function	type::of
+function	type::string
+function	type::uuid
+function	vector::cosine
+function	vector::dot
+function	vector::euclidean
+form	ACK
+form	ADD RECIPIENT
+form	ALTER GROUP
+form	ALTER NAMESPACE
+form	ALTER REPLICA
+form	ALTER STORE FINALIZE FORMAT
+form	ALTER TABLE
+form	ALTER TABLE ALTER FIELD
+form	ALTER USER
+form	ANALYZE TABLE
+form	BACKUP
+form	BEGIN
+form	CANCEL
+form	CHANGE VAULT PASSPHRASE
+form	CHECK TABLE
+form	CLAIM
+form	CLAIM <record>
+form	COMMIT
+form	CREATE
+form	CREATE JOIN TOKEN
+form	DEFINE ANALYZER
+form	DEFINE BUCKET
+form	DEFINE COLLECTION
+form	DEFINE DATABASE
+form	DEFINE EDGE
+form	DEFINE EVENT
+form	DEFINE FAILOVER
+form	DEFINE FIELD
+form	DEFINE GEO
+form	DEFINE GRAPH
+form	DEFINE GROUP
+form	DEFINE INDEX
+form	DEFINE KAFKA CONSUMER
+form	DEFINE NAMESPACE
+form	DEFINE NODE
+form	DEFINE PARAM
+form	DEFINE QUEUE
+form	DEFINE REPLICA
+form	DEFINE ROLLUP
+form	DEFINE SEARCH
+form	DEFINE SERIES
+form	DEFINE SPACE
+form	DEFINE STOPWORDS
+form	DEFINE SYNONYMS
+form	DEFINE TABLE
+form	DEFINE TOPIC
+form	DEFINE TOPIC CONSUMER
+form	DEFINE USER
+form	DEFINE VAULT
+form	DEFINE VECTOR
+form	DEFINE VIEW
+form	DEL
+form	DELETE
+form	DELETE EDGE
+form	DELETE FROM
+form	DELETE FROM a span
+form	DROP ANALYZER
+form	DROP DATABASE
+form	DROP EDGE
+form	DROP EVENT
+form	DROP FIELD
+form	DROP GEO
+form	DROP GRAPH
+form	DROP GROUP
+form	DROP IF EXISTS
+form	DROP INDEX
+form	DROP KAFKA CONSUMER
+form	DROP NAMESPACE
+form	DROP PARAM
+form	DROP QUEUE
+form	DROP REPLICA
+form	DROP ROLLUP
+form	DROP SEARCH
+form	DROP SERIES
+form	DROP STOPWORDS
+form	DROP SYNONYMS
+form	DROP TABLE
+form	DROP TOPIC CONSUMER
+form	DROP USER
+form	DROP VAULT
+form	DROP VECTOR
+form	DROP VIEW
+form	EXPIRE
+form	EXPLAIN
+form	GET
+form	GRANT
+form	GRANT ON REACH
+form	HAND
+form	INCR
+form	INFO FOR
+form	INSERT
+form	KEYS
+form	LET
+form	LIST PUSH
+form	NACK
+form	PERSIST
+form	PUT
+form	READ
+form	READ FROM
+form	REBUILD INDEX
+form	RELATE
+form	RELEASE
+form	RELEASE ALL
+form	RELEASE SAVEPOINT
+form	REMOVE RECIPIENT
+form	RESTORE
+form	RETURN
+form	REVEAL
+form	REVOKE
+form	REVOKE CERTIFICATE
+form	REVOKE ON REACH
+form	ROLLBACK TO
+form	SAVEPOINT
+form	SEAL VAULT
+form	SELECT
+form	SET
+form	THROW
+form	TRIM
+form	TRUNCATE
+form	UNSEAL VAULT
+form	UPDATE
+form	UPDATE over a set
+form	UPSERT
+form	USE
+form	VERIFY

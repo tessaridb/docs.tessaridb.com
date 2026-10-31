@@ -1,0 +1,75 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.3-alpha"
+edition = "2024"
+rust-version = "1.98"
+license = "Apache-2.0"
+authors = ["boogvar"]
+repository = "https://github.com/tessaridb/docs.tessaridb.com"
+publish = false
+
+[workspace.dependencies]
+docs-content = { path = "crates/docs-content", version = "0.0.3-alpha" }
+docs-store = { path = "crates/docs-store", version = "0.0.3-alpha" }
+docs-server = { path = "crates/docs-server", version = "0.0.3-alpha" }
+
+# The database is reached as any other caller reaches it: over the wire, through
+# the published client. A path or a git reference to the engine repository would
+# make this site a privileged consumer and stop it from being a demonstration of
+# what an ordinary one can do (LR-DOCS-003).
+tessaridb-client = { git = "https://github.com/tessaridb/TessariDB-sdk-rust.git", rev = "a969114f5a5ca1b6d493bbdcdcf5856cdfe5ef5c" }
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "fs", "signal"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The publishing client. `rustls` rather than the platform's TLS so that the
+# binary behaves the same on a laptop and in a container, and no default
+# features so this is a client and not also a cookie store and a proxy resolver.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "http2", "charset"] }
+# TOML rather than YAML front matter: the maintained YAML crates in this
+# ecosystem are a moving target, and `toml` is the one this project already
+# trusts elsewhere. Authors write `+++`.
+toml = "0.9"
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+thiserror = "2"
+log = { version = "0.4", features = ["std"] }
+env_logger = "0.11"
+
+# Authorization. All three are RustCrypto and none of this is hand-rolled: a
+# password hash, a random token and a digest are the three places where an
+# improvised version is indistinguishable from a correct one until somebody
+# reads a dump.
+#
+# `argon2` for passwords, because it is memory-hard and the crate's defaults
+# track the OWASP guidance. `sha2` for tokens, because a 256-bit random token
+# needs a fast digest and not a slow one — the slowness of Argon2 buys nothing
+# against an input with no guessable structure, and would be paid on every
+# request. `getrandom` for the token itself, straight from the operating
+# system's generator rather than from anything seeded by a clock.
+argon2 = "0.5"
+sha2 = "0.10"
+getrandom = "0.3"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+cast_possible_truncation = "deny"
+cast_possible_wrap = "deny"
+cast_sign_loss = "deny"
+cast_precision_loss = "deny"
+unwrap_used = "deny"
+panic = "deny"
+arithmetic_side_effects = "warn"
+todo = "warn"
+unimplemented = "warn"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
