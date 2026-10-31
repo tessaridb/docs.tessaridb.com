@@ -2,7 +2,7 @@
  * The products this site documents.
  *
  * The engine's pages were here first and keep the URLs they always had; every
- * other product owns exactly one top-level section named by its id — `/s3`,
+ * other product owns exactly one top-level section named by its id -- `/s3`,
  * `/am`, `/kv`, `/oauth`, `/vault`: and every page under it is that product's.
  * The API carries the same closed list (`docs-store/src/projects.rs`), so a
  * project named in a request is one of these six or it is refused.
@@ -22,17 +22,17 @@ export type Project = {
   /** The name in the header, beside the mark, where room is short. */
   short: string;
   /**
-   * The release the live pages describe — the header's picker and the footer
+   * The release the live pages describe -- the header's picker and the footer
    * both read it here, which is where it is changed when a release ships.
    *
-   * It is **not** derived from `DOCS_NAMESPACE`. That value — `v0_0_3_alpha` —
+   * It is **not** derived from `DOCS_NAMESPACE`. That value -- `v0_0_3_alpha` --
    * looks like a version and is not: it names the store's namespace, so
    * changing it moves the site's content rather than relabelling anything.
    */
   latest: string;
   /** The product site, for the reader who wants the case rather than the manual, or `null` until it is live. */
   site: string | null;
-  /** What it is, in one line — the switcher and `llms.txt` both say it. */
+  /** What it is, in one line -- the switcher and `llms.txt` both say it. */
   blurb: string;
   /** The public repository, or `null` while the source is private. */
   source: string | null;
@@ -103,7 +103,7 @@ export const projects: readonly Project[] = [
     id: "vault",
     name: "TessariDB Vault",
     short: "Vault",
-    latest: "0.0.1",
+    latest: "0.0.2",
     site: "https://vault.tessaridb.com",
     blurb:
       "A corporate password manager: records sealed in the browser, kept in TessariDB, shared by teams and departments.",
@@ -149,8 +149,8 @@ export function projectOf(pathname: string): ProjectId {
 }
 
 /**
- * The page a route's steps name inside a project. A project's own address —
- * `/` for the engine, `/kv` for a product — is its `index` page.
+ * The page a route's steps name inside a project. A project's own address --
+ * `/` for the engine, `/kv` for a product -- is its `index` page.
  */
 export function pageSlug(id: ProjectId, steps: readonly string[] = []): string {
   const at = root(id);
@@ -182,8 +182,8 @@ export function releaseOf(pathname: string): string | null {
 
 /**
  * Where a page is read, in the live site or in an archived release. An
- * `index` page is its project's front page and is linked as one — `/kv`, not
- * `/kv/index` — so a link, the tree's highlight and the canonical URL all
+ * `index` page is its project's front page and is linked as one -- `/kv`, not
+ * `/kv/index` -- so a link, the tree's highlight and the canonical URL all
  * agree on one address.
  */
 export function pagePath(slug: string, archived: string | null = null): string {
