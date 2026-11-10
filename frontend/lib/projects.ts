@@ -68,7 +68,7 @@ export const projects: readonly Project[] = [
     id: "am",
     name: "TessariDB Agent Memory",
     short: "Agent Memory",
-    latest: "0.6.2",
+    latest: "0.6.5",
     site: "https://am.tessaridb.com",
     blurb:
       "Memory for agents that outlives the context window, shared between them.",
@@ -91,7 +91,7 @@ export const projects: readonly Project[] = [
     id: "oauth",
     name: "TessariDB OAuth",
     short: "OAuth",
-    latest: "0.3.0",
+    latest: "0.3.3",
     site: "https://oauth.tessaridb.com",
     blurb:
       "Sign-in for your own applications: an OAuth 2.1 and OpenID Connect server whose state is kept in TessariDB.",
@@ -103,7 +103,7 @@ export const projects: readonly Project[] = [
     id: "vault",
     name: "TessariDB Vault",
     short: "Vault",
-    latest: "0.0.3",
+    latest: "0.0.4",
     site: "https://vault.tessaridb.com",
     blurb:
       "A corporate password manager: records sealed in the browser, kept in TessariDB, shared by teams and departments.",
