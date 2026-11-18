@@ -434,7 +434,9 @@ fn showing(serving: Serving, section: Option<String>) -> Shown {
 /// The exact inverse of how `corpus` derives a slug — the path under the content
 /// root, with `.md` back on.
 fn source_of(root: &Path, slug: &str) -> std::path::PathBuf {
-    root.join(slug).with_extension("md")
+    // Append, never replace: a versioned slug such as `changelog/0.46.0`
+    // carries dots of its own, and `with_extension` would eat the last one.
+    root.join(format!("{slug}.md"))
 }
 
 /// Sign in, and answer with the token.
